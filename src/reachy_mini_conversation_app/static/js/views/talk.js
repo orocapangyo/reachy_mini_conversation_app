@@ -8,6 +8,7 @@ import { applyPersonality, getMicState, listPersonalities, setMicMuted, subscrib
 import { ORB_STATES } from "../constants.js";
 import { createOrb, mapActivityToState } from "../orb.js";
 import { createAudioMeter } from "../components/audio-meter.js";
+import { createCommandList } from "../components/command-list.js";
 import { consumePendingApply } from "../pending-apply.js";
 import { setPersonality } from "../personality-badge.js";
 import { h, prettifyProfileName } from "../ui.js";
@@ -137,13 +138,27 @@ export async function mountTalkView({ outlet, signal }) {
   );
 
   const audioMeter = createAudioMeter();
+  const commandList = createCommandList();
+
+  const mainColumn = h(
+    "div",
+    { class: "talk__main-column" },
+    stage,
+    audioMeter.root,
+    caption
+  );
+
+  const layout = h(
+    "div",
+    { class: "talk__layout" },
+    commandList.root,
+    mainColumn
+  );
 
   const view = h(
     "section",
     { class: "view view--talk" },
-    stage,
-    audioMeter.root,
-    caption
+    layout
   );
   outlet.replaceChildren(view);
 

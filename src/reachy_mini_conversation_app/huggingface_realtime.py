@@ -1,3 +1,4 @@
+import re
 import json
 import time
 import uuid
@@ -67,6 +68,31 @@ logger = logging.getLogger(__name__)
 
 _RESPONSE_DONE_TIMEOUT: Final[float] = 30.0
 _RESPONSE_REJECTION_RETRY_DELAY: Final[float] = 0.5
+
+# Well-known Korean Whisper hallucination phrases on silence/ambient noise.
+_WHISPER_HALLUCINATION_PATTERNS: tuple[str, ...] = (
+    "이덕영입니다",
+    "이덕영기자",
+    "시청해주셔서감사",
+    "시청해주신여러분감사",
+    "다음영상에서만나",
+    "구독과좋아요",
+    "재밌게보셨다면",
+    "재미있게보셨다면",
+    "mbc뉴스",
+    "mbc뉴스데스크",
+    "kbs뉴스",
+    "sbs뉴스",
+    "먹방끝",
+)
+
+
+def is_hallucinated_transcript(text: str) -> bool:
+    """Return True if transcript matches known Whisper Korean hallucination patterns."""
+    normalized = re.sub(r"[\W_]+", "", text.lower())
+    if not normalized:
+        return False
+    return any(pat in normalized for pat in _WHISPER_HALLUCINATION_PATTERNS)
 
 
 class InputTranscriptChunksByItem(BaseModel):
@@ -842,6 +868,19 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                         if not transcript:
                             logger.debug("Ignoring empty user transcript")
+                            continue
+
+                        if is_hallucinated_transcript(transcript):
+                            logger.info("Ignoring Whisper hallucinated transcript: %r", transcript)
+                            if self.connection is not None:
+                                try:
+                                    response_mgr = getattr(self.connection, "response", None)
+                                    if response_mgr is not None and hasattr(response_mgr, "cancel"):
+                                        await response_mgr.cancel()
+                                except Exception as e:
+                                    logger.debug("Failed to cancel response for hallucination: %s", e)
+                            if self._clear_queue:
+                                self._clear_queue()
                             continue
 
                         self._turn_user_done_at = time.perf_counter()

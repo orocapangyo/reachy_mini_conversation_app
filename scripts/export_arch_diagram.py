@@ -6,6 +6,7 @@ from pathlib import Path
 
 async def render_with_playwright(html_path: Path, output_png: Path):
     from playwright.async_api import async_playwright
+
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page(viewport={"width": 1200, "height": 860}, device_scale_factor=2)
@@ -18,6 +19,7 @@ async def render_with_playwright(html_path: Path, output_png: Path):
 def render_with_selenium(html_path: Path, output_png: Path):
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
+
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--window-size=1200,860")
@@ -27,6 +29,7 @@ def render_with_selenium(html_path: Path, output_png: Path):
     try:
         driver.get(html_path.as_uri())
         import time
+
         time.sleep(1)
         driver.save_screenshot(str(output_png))
     finally:
@@ -35,6 +38,7 @@ def render_with_selenium(html_path: Path, output_png: Path):
 
 def render_with_edge(html_path: Path, output_png: Path):
     import subprocess
+
     edge_paths = [
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
@@ -79,6 +83,7 @@ def main():
     doc_assets_png.parent.mkdir(parents=True, exist_ok=True)
     if output_png.exists():
         import shutil
+
         shutil.copyfile(output_png, doc_assets_png)
         print(f"Copied to {doc_assets_png}")
 

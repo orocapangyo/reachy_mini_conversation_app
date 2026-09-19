@@ -13,7 +13,8 @@ def dump_doc(path):
             cells_text = [f"c{c_idx}: {c.text.strip()}" for c_idx, c in enumerate(row.cells)]
             print(f"  Row {r_idx}: " + " | ".join(cells_text))
 
+
 if __name__ == "__main__":
     dump_doc(r"docs/oss_report/(해당시 제출) 출품작 중복수혜 여부 확인서_접수번호(팀명).docx")
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
     dump_doc(r"docs/oss_report/2026 오픈소스 개발자대회 결과보고서_접수번호(팀명).docx")

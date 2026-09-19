@@ -534,3 +534,22 @@ async def test_change_voice_updates_live_hf_session_without_restart(monkeypatch:
     restart.assert_not_awaited()
     session = captured_update["session"]
     assert session["audio"]["output"]["voice"] == "Serena"
+
+
+def test_is_hallucinated_transcript() -> None:
+    """Verify that known Whisper Korean hallucination patterns are detected and normal speech is preserved."""
+    assert hf_mod.is_hallucinated_transcript("MBC 뉴스 이덕영입니다.") is True
+    assert hf_mod.is_hallucinated_transcript("MBC 뉴스 이덕영 기자입니다.") is True
+    assert hf_mod.is_hallucinated_transcript("시청해주셔서 감사합니다.") is True
+    assert hf_mod.is_hallucinated_transcript("시청해 주셔서 감사합니다!") is True
+    assert hf_mod.is_hallucinated_transcript("다음 영상에서 만나요!") is True
+    assert hf_mod.is_hallucinated_transcript("구독과 좋아요 부탁드립니다.") is True
+    assert hf_mod.is_hallucinated_transcript("먹방끝 빠이빠이") is True
+    assert hf_mod.is_hallucinated_transcript("재밌게 보셨다면 좋아요 눌러주세요") is True
+
+    # Real user speech should not be marked as hallucination
+    assert hf_mod.is_hallucinated_transcript("지금 몇 시야?") is False
+    assert hf_mod.is_hallucinated_transcript("카메라로 앞을 봐줘") is False
+    assert hf_mod.is_hallucinated_transcript("오늘 날씨 어때?") is False
+    assert hf_mod.is_hallucinated_transcript("안녕 리치야") is False
+    assert hf_mod.is_hallucinated_transcript("") is False

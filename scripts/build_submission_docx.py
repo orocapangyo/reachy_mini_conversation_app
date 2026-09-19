@@ -7,7 +7,9 @@ from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
-def clear_cell_and_set_text(cell, text, font_size_pt=9.5, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT, line_spacing=1.15):
+def clear_cell_and_set_text(
+    cell, text, font_size_pt=9.5, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT, line_spacing=1.15
+):
     """Clear all existing paragraphs in cell and set new formatted text."""
     p = cell.paragraphs[0]
     p.text = ""
@@ -46,7 +48,12 @@ def populate_confirmation_form(src_path, dst_path):
     t1 = doc.tables[1]
     clear_cell_and_set_text(t1.rows[0].cells[1], "484", font_size_pt=10, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
     clear_cell_and_set_text(t1.rows[0].cells[3], "", font_size_pt=10, align=WD_ALIGN_PARAGRAPH.CENTER)
-    clear_cell_and_set_text(t1.rows[1].cells[1], "Reachy Mini 기반 초저지연 한국어 감정 반응형 스마트 데스크 동반자 (DeskMate)", font_size_pt=9.5, bold=True)
+    clear_cell_and_set_text(
+        t1.rows[1].cells[1],
+        "Reachy Mini 기반 초저지연 한국어 감정 반응형 스마트 데스크 동반자 (DeskMate)",
+        font_size_pt=9.5,
+        bold=True,
+    )
 
     # Table 3: 정부 지원사업 참여 이력 (6 rows x 5 cols)
     t3 = doc.tables[3]
@@ -88,7 +95,9 @@ def populate_result_report(src_path, dst_path):
 
     # Table 2: 기본 정보
     t_basic = doc.tables[2]
-    clear_cell_and_set_text(t_basic.rows[1].cells[1], "484", font_size_pt=10, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
+    clear_cell_and_set_text(
+        t_basic.rows[1].cells[1], "484", font_size_pt=10, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER
+    )
     clear_cell_and_set_text(t_basic.rows[1].cells[3], "1명", font_size_pt=10, align=WD_ALIGN_PARAGRAPH.CENTER)
     clear_cell_and_set_text(t_basic.rows[2].cells[1], "일반", font_size_pt=10, align=WD_ALIGN_PARAGRAPH.CENTER)
     clear_cell_and_set_text(t_basic.rows[2].cells[3], "자유과제", font_size_pt=10, align=WD_ALIGN_PARAGRAPH.CENTER)
@@ -101,26 +110,24 @@ def populate_result_report(src_path, dst_path):
         t_main.rows[1].cells[1],
         "Reachy Mini 기반 초저지연 한국어 감정 반응형 스마트 데스크 동반자 (DeskMate)",
         font_size_pt=10,
-        bold=True
+        bold=True,
     )
     # Row 2: 프로젝트 등록 URL
     clear_cell_and_set_text(
-        t_main.rows[2].cells[1],
-        "https://github.com/orocapangyo/reachy_mini_conversation_app",
-        font_size_pt=9.5
+        t_main.rows[2].cells[1], "https://github.com/orocapangyo/reachy_mini_conversation_app", font_size_pt=9.5
     )
     # Row 3: 시연영상
     clear_cell_and_set_text(
         t_main.rows[3].cells[1],
         "https://youtu.be/rKl8HJeEzbc?si=Ouac-idKmVvpFaUR (시연 영상 링크)",
         font_size_pt=9.5,
-        bold=True
+        bold=True,
     )
     # Row 4: 프로젝트 소개
     clear_cell_and_set_text(
         t_main.rows[4].cells[1],
         "9-DOF 소형 휴머노이드 로봇(Reachy Mini)과 OpenAI Realtime API를 결합하여, 초저지연 양방향 한국어 음성 대화, 음원 방향 추적(DoA) 및 3D 안면 인식 시선 동기화, 감정 반응형 6-DOF 헤드·2-DOF 안테나 제스처, 백그라운드 뽀모도로 작업 집중 지원을 제공하는 오픈소스 데스크 동반자 시스템",
-        font_size_pt=9.5
+        font_size_pt=9.5,
     )
 
     # Row 6: 개발배경 및 목적
@@ -236,21 +243,126 @@ def populate_result_report(src_path, dst_path):
     # Table 5: 붙임1. SBOM
     t_sbom = doc.tables[5]
     sbom_data = [
-        ("1", "reachy_mini", "1.4.3", "Apache-2.0", "https://github.com/pollen-robotics/reachy_mini", "Reachy Mini 로봇 기구학 제어, 모터 동기화, 센서 통신 핵심 SDK"),
-        ("2", "openai", ">=1.50.0", "Apache-2.0", "https://github.com/openai/openai-python", "OpenAI Realtime API WebSocket 통신 및 양방향 오디오 스트리밍"),
-        ("3", "onnxruntime", ">=1.18.0", "MIT", "https://github.com/microsoft/onnxruntime", "YuNet 경량 딥러닝 안면 검출 모델 고속 CPU 추론"),
-        ("4", "ultralytics", ">=8.0.0", "AGPL-3.0", "https://github.com/ultralytics/ultralytics", "YOLOv8 경량 객체 감지 모델 고속 추론 및 데스크탑 사물 인식"),
-        ("5", "opencv-python", ">=4.9.0", "Apache-2.0", "https://github.com/opencv/opencv-python", "카메라 영상 프레임 캡처, 이미지 변환 및 전처리"),
-        ("6", "numpy", ">=1.26.0", "BSD-3-Clause", "https://github.com/numpy/numpy", "3D 공간 기하학 연산, 24kHz 오디오 PCM 버퍼 연산 및 필터링"),
-        ("7", "scipy", ">=1.12.0", "BSD-3-Clause", "https://github.com/scipy/scipy", "24kHz <-> 16kHz 오디오 고품질 실시간 리샘플링"),
-        ("8", "google-api-python-client", ">=2.100.0", "Apache-2.0", "https://github.com/googleapis/google-api-python-client", "Google Calendar API 연동 및 일정 조회 서비스"),
-        ("9", "google-auth-oauthlib", ">=1.2.0", "Apache-2.0", "https://github.com/googleapis/google-auth-library-python-oauthlib", "Google OAuth2 사용자 인증 및 토큰 플로우 관리"),
-        ("10", "fastapi", ">=0.110.0", "MIT", "https://github.com/tiangolo/fastapi", "웹 대화 대시보드 및 WebSocket JSON-RPC 엔드포인트 서버"),
-        ("11", "uvicorn", ">=0.28.0", "BSD-3-Clause", "https://github.com/encode/uvicorn", "고성능 비동기 웹 서버 ASGI 런타임"),
-        ("12", "pydantic", ">=2.6.0", "MIT", "https://github.com/pydantic/pydantic", "설정값 유효성 검증 및 도구(Tools) 파라미터 스키마 정의"),
-        ("13", "pytest", ">=8.0.0", "MIT", "https://github.com/pytest-dev/pytest", "단위 테스트 및 시스템 회귀 검증 프레임워크"),
-        ("14", "ruff", ">=0.3.0", "MIT", "https://github.com/astral-sh/ruff", "초고속 Python 코드 린트 및 코드 포맷팅 검증"),
-        ("15", "mypy", ">=1.9.0", "MIT", "https://github.com/python/mypy", "Strict 모드 정적 타입 검증을 통한 안정성 확보"),
+        (
+            "1",
+            "reachy_mini",
+            "1.4.3",
+            "Apache-2.0",
+            "https://github.com/pollen-robotics/reachy_mini",
+            "Reachy Mini 로봇 기구학 제어, 모터 동기화, 센서 통신 핵심 SDK",
+        ),
+        (
+            "2",
+            "openai",
+            ">=1.50.0",
+            "Apache-2.0",
+            "https://github.com/openai/openai-python",
+            "OpenAI Realtime API WebSocket 통신 및 양방향 오디오 스트리밍",
+        ),
+        (
+            "3",
+            "onnxruntime",
+            ">=1.18.0",
+            "MIT",
+            "https://github.com/microsoft/onnxruntime",
+            "YuNet 경량 딥러닝 안면 검출 모델 고속 CPU 추론",
+        ),
+        (
+            "4",
+            "ultralytics",
+            ">=8.0.0",
+            "AGPL-3.0",
+            "https://github.com/ultralytics/ultralytics",
+            "YOLOv8 경량 객체 감지 모델 고속 추론 및 데스크탑 사물 인식",
+        ),
+        (
+            "5",
+            "opencv-python",
+            ">=4.9.0",
+            "Apache-2.0",
+            "https://github.com/opencv/opencv-python",
+            "카메라 영상 프레임 캡처, 이미지 변환 및 전처리",
+        ),
+        (
+            "6",
+            "numpy",
+            ">=1.26.0",
+            "BSD-3-Clause",
+            "https://github.com/numpy/numpy",
+            "3D 공간 기하학 연산, 24kHz 오디오 PCM 버퍼 연산 및 필터링",
+        ),
+        (
+            "7",
+            "scipy",
+            ">=1.12.0",
+            "BSD-3-Clause",
+            "https://github.com/scipy/scipy",
+            "24kHz <-> 16kHz 오디오 고품질 실시간 리샘플링",
+        ),
+        (
+            "8",
+            "google-api-python-client",
+            ">=2.100.0",
+            "Apache-2.0",
+            "https://github.com/googleapis/google-api-python-client",
+            "Google Calendar API 연동 및 일정 조회 서비스",
+        ),
+        (
+            "9",
+            "google-auth-oauthlib",
+            ">=1.2.0",
+            "Apache-2.0",
+            "https://github.com/googleapis/google-auth-library-python-oauthlib",
+            "Google OAuth2 사용자 인증 및 토큰 플로우 관리",
+        ),
+        (
+            "10",
+            "fastapi",
+            ">=0.110.0",
+            "MIT",
+            "https://github.com/tiangolo/fastapi",
+            "웹 대화 대시보드 및 WebSocket JSON-RPC 엔드포인트 서버",
+        ),
+        (
+            "11",
+            "uvicorn",
+            ">=0.28.0",
+            "BSD-3-Clause",
+            "https://github.com/encode/uvicorn",
+            "고성능 비동기 웹 서버 ASGI 런타임",
+        ),
+        (
+            "12",
+            "pydantic",
+            ">=2.6.0",
+            "MIT",
+            "https://github.com/pydantic/pydantic",
+            "설정값 유효성 검증 및 도구(Tools) 파라미터 스키마 정의",
+        ),
+        (
+            "13",
+            "pytest",
+            ">=8.0.0",
+            "MIT",
+            "https://github.com/pytest-dev/pytest",
+            "단위 테스트 및 시스템 회귀 검증 프레임워크",
+        ),
+        (
+            "14",
+            "ruff",
+            ">=0.3.0",
+            "MIT",
+            "https://github.com/astral-sh/ruff",
+            "초고속 Python 코드 린트 및 코드 포맷팅 검증",
+        ),
+        (
+            "15",
+            "mypy",
+            ">=1.9.0",
+            "MIT",
+            "https://github.com/python/mypy",
+            "Strict 모드 정적 타입 검증을 통한 안정성 확보",
+        ),
     ]
 
     # Ensure table has enough rows
@@ -293,14 +405,20 @@ def populate_result_report(src_path, dst_path):
     clear_cell_and_set_text(t_ai.rows[3].cells[4], model_licenses, font_size_pt=8.5)
 
     # Row 5-8: 데이터셋 및 가중치 정보 (유형 1이므로 해당 없음)
-    clear_cell_and_set_text(t_ai.rows[5].cells[1], "해당 없음 (유형 1 API 연동 및 사전 학습 모델 활용)", font_size_pt=9.0)
+    clear_cell_and_set_text(
+        t_ai.rows[5].cells[1], "해당 없음 (유형 1 API 연동 및 사전 학습 모델 활용)", font_size_pt=9.0
+    )
     clear_cell_and_set_text(t_ai.rows[6].cells[1], "해당 없음", font_size_pt=9.0)
     clear_cell_and_set_text(t_ai.rows[7].cells[1], "해당 없음", font_size_pt=9.0)
     clear_cell_and_set_text(t_ai.rows[8].cells[1], "해당 없음", font_size_pt=9.0)
 
     # Row 10: 소스코드 라이선스 및 저장소
-    clear_cell_and_set_text(t_ai.rows[10].cells[1], "Apache License 2.0 (OSI 인증 라이선스)", font_size_pt=9.0, bold=True)
-    clear_cell_and_set_text(t_ai.rows[10].cells[4], "https://github.com/orocapangyo/reachy_mini_conversation_app", font_size_pt=8.5)
+    clear_cell_and_set_text(
+        t_ai.rows[10].cells[1], "Apache License 2.0 (OSI 인증 라이선스)", font_size_pt=9.0, bold=True
+    )
+    clear_cell_and_set_text(
+        t_ai.rows[10].cells[4], "https://github.com/orocapangyo/reachy_mini_conversation_app", font_size_pt=8.5
+    )
 
     # Row 11: 상용 AI 보조도구 활용 여부 및 범위
     ai_assist_text = (
