@@ -85,15 +85,23 @@ export async function mountTalkView({ outlet, signal }) {
       if (!res.ok) return;
       const data = await res.json();
       if (!data?.devices || signal.aborted) return;
+      const savedCamera = localStorage.getItem("reachy_mini_camera_device");
+      const activeId =
+        savedCamera && data.devices.some((d) => d.id === savedCamera)
+          ? savedCamera
+          : data.active;
       cameraSelect.replaceChildren(
         ...data.devices.map((d) =>
           h(
             "option",
-            { value: d.id, selected: d.id === data.active },
+            { value: d.id, selected: d.id === activeId },
             d.name
           )
         )
       );
+      if (savedCamera && savedCamera !== data.active && data.devices.some((d) => d.id === savedCamera)) {
+        void fetch(`/api/camera/select?device=${encodeURIComponent(savedCamera)}`, { method: "POST" });
+      }
     } catch (e) {
       console.debug("Failed loading camera devices", e);
     }
@@ -102,6 +110,7 @@ export async function mountTalkView({ outlet, signal }) {
   cameraSelect.addEventListener("change", async (e) => {
     const selectedId = e.target.value;
     try {
+      localStorage.setItem("reachy_mini_camera_device", selectedId);
       await fetch(`/api/camera/select?device=${encodeURIComponent(selectedId)}`, {
         method: "POST",
       });

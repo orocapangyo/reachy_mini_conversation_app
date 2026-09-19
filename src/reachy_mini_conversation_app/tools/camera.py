@@ -48,11 +48,17 @@ class Camera(Tool):
             logger.error("Camera is disabled")
             return {"error": "Camera is disabled"}
 
-        if not hasattr(deps.reachy_mini, "media") or deps.reachy_mini.media is None:
-            logger.error("Reachy Mini media interface is not available")
-            return {"error": "Camera media is not available"}
+        jpeg_bytes = None
+        try:
+            from reachy_mini_conversation_app.camera_service import CameraService
 
-        jpeg_bytes = deps.reachy_mini.media.get_frame_jpeg()
+            jpeg_bytes = CameraService.get_instance().get_frame_jpeg()
+        except Exception as e:
+            logger.debug("Failed getting frame from CameraService: %s", e)
+
+        if jpeg_bytes is None and hasattr(deps.reachy_mini, "media") and deps.reachy_mini.media is not None:
+            jpeg_bytes = deps.reachy_mini.media.get_frame_jpeg()
+
         if jpeg_bytes is None:
             logger.error("No frame available from camera")
             return {"error": "No frame available"}

@@ -58,15 +58,22 @@ class CameraService:
             {"id": "robot", "name": "Reachy Mini 실물 로봇 카메라"},
         ]
 
-        # Scan USB webcam index 0 with quick check
+        # Scan USB webcam index 0 and 1 with quick check
         for idx in (0, 1):
-            if idx in self._failed_devices and (now - self._failed_devices[idx] < 30.0):
+            if self._cap is not None and self._cap_device_index == idx and self._cap.isOpened():
+                devices.append({"id": str(idx), "name": f"USB 웹캠 {idx}"})
+                continue
+            if idx in self._failed_devices and (now - self._failed_devices[idx] < 15.0):
                 continue
             try:
                 cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+                if not cap.isOpened():
+                    cap.release()
+                    cap = cv2.VideoCapture(idx)
                 if cap.isOpened():
                     devices.append({"id": str(idx), "name": f"USB 웹캠 {idx}"})
                     cap.release()
+                    self._failed_devices.pop(idx, None)
                 else:
                     cap.release()
                     self._failed_devices[idx] = now

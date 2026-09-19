@@ -10,9 +10,28 @@ from reachy_mini_conversation_app.tools.core_tools import ToolDependencies
 
 
 @pytest.mark.asyncio
-async def test_camera_tool_returns_base64_of_sdk_jpeg() -> None:
-    """The tool base64-encodes the JPEG bytes returned by the SDK."""
+async def test_camera_tool_returns_camera_service_jpeg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tool returns JPEG from CameraService when available."""
+    jpeg_bytes = b"\xff\xd8service_jpeg\xff\xd9"
+    monkeypatch.setattr(
+        "reachy_mini_conversation_app.camera_service.CameraService.get_frame_jpeg", lambda self: jpeg_bytes
+    )
+
+    deps = ToolDependencies(
+        reachy_mini=MagicMock(),
+        movement_manager=MagicMock(),
+        camera_enabled=True,
+    )
+
+    result = await Camera()(deps, question="What color is this?")
+    assert result["b64_im"] == base64.b64encode(jpeg_bytes).decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_camera_tool_returns_base64_of_sdk_jpeg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tool base64-encodes the JPEG bytes returned by the SDK as fallback."""
     jpeg_bytes = b"\xff\xd8jpeg\xff\xd9"
+    monkeypatch.setattr("reachy_mini_conversation_app.camera_service.CameraService.get_frame_jpeg", lambda self: None)
     reachy_mini = MagicMock()
     reachy_mini.media.get_frame_jpeg.return_value = jpeg_bytes
 
@@ -28,8 +47,9 @@ async def test_camera_tool_returns_base64_of_sdk_jpeg() -> None:
 
 
 @pytest.mark.asyncio
-async def test_camera_tool_reports_error_when_no_frame() -> None:
+async def test_camera_tool_reports_error_when_no_frame(monkeypatch: pytest.MonkeyPatch) -> None:
     """With no frame available the tool returns an error."""
+    monkeypatch.setattr("reachy_mini_conversation_app.camera_service.CameraService.get_frame_jpeg", lambda self: None)
     reachy_mini = MagicMock()
     reachy_mini.media.get_frame_jpeg.return_value = None
 
