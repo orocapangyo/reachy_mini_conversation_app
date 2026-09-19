@@ -4,6 +4,7 @@ Enables enumeration of available audio capture hardware, real-time input device 
 and low-latency audio sample acquisition via GStreamer for speech interaction.
 """
 
+import os
 import time
 import logging
 import platform
@@ -33,7 +34,14 @@ class AudioDeviceService:
         self._pipeline: Optional[Any] = None
         self._sink: Optional[Any] = None
         self._gst_initialized: bool = False
-        self._noise_gate_threshold: float = 0.0
+        env_threshold = os.getenv("REACHY_MINI_NOISE_GATE_THRESHOLD")
+        init_threshold = 0.0
+        if env_threshold:
+            try:
+                init_threshold = max(0.0, min(1.0, float(env_threshold)))
+            except ValueError:
+                pass
+        self._noise_gate_threshold: float = init_threshold
         self._gate_hold_time_s: float = 0.35
         self._last_speech_time: float = 0.0
 

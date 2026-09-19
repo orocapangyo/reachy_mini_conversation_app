@@ -202,3 +202,42 @@ async def test_assistant_transcript_never_triggers_wake(monkeypatch: Any) -> Non
     await asyncio.sleep(0)
 
     wake.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_user_transcript_without_wake_phrase_triggers_sleeping_notice(monkeypatch: Any) -> None:
+    """A final user transcript without a wake phrase schedules _send_standby_sleeping_notice."""
+    handler = _make_handler()
+    handler._standby = True
+    handler._standby_loop = asyncio.get_running_loop()
+    wake = AsyncMock()
+    notice = AsyncMock()
+    monkeypatch.setattr(handler, "wake_from_standby", wake)
+    monkeypatch.setattr(handler, "_send_standby_sleeping_notice", notice)
+
+    handler._emit_transcript("user", "지금 몇 시야?", True)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    wake.assert_not_awaited()
+    notice.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_standby_sleeping_notice_queues_prompt() -> None:
+    """_send_standby_sleeping_notice queues the sleep notice and enforces rate limiting."""
+    handler = _make_handler()
+    handler.connection = _FakeConnection()
+    handler._standby = True
+    safe_response = AsyncMock()
+    handler._safe_response_create = safe_response  # type: ignore[method-assign]
+
+    await handler._send_standby_sleeping_notice()
+
+    assert handler.connection.created_items, "sleeping notice item must be queued"
+    safe_response.assert_awaited_once()
+
+    # Calling again immediately should be rate-limited (cooldown)
+    safe_response.reset_mock()
+    await handler._send_standby_sleeping_notice()
+    safe_response.assert_not_awaited()

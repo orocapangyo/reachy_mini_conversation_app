@@ -1,6 +1,5 @@
 """Render architecture_diagram.html to high-resolution PNG using Playwright/Selenium/Headless Browser."""
 
-import asyncio
 import os
 from pathlib import Path
 

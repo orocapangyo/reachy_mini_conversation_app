@@ -6,6 +6,7 @@ tool plumbing, and idle policy are inherited unchanged.
 """
 
 import re
+import time
 import base64
 import asyncio
 import logging
@@ -66,6 +67,13 @@ DEFAULT_WAKE_PHRASES: tuple[str, ...] = ("깨어나", "리치미니", "일어나
 # Prompt queued after waking so the model opens the conversation itself.
 WAKE_GREETING_PROMPT = (
     "(사용자가 방금 웨이크 워드로 너를 깨웠다. 한국어로 짧고 반갑게 인사하고 무엇을 도울지 물어보라.)"
+)
+
+# Prompt queued when user speaks during standby without a wake phrase.
+STANDBY_SLEEPING_PROMPT = (
+    "(너는 지금 수면(절전 대기) 모드이다. 깨어있지 않으므로 사용자의 명령을 수행할 수 없다. "
+    "한국어로 '현재 수면 중입니다. 대화하시려면 리치야, 안녕, 또는 일어나라고 불러 깨워주세요.'라고 "
+    "차분하고 짧게 한 문장으로만 안내하라. 절대 도구를 호출하거나 깨어나지 마라.)"
 )
 
 
@@ -146,6 +154,7 @@ class OpenAIRealtimeHandler(HuggingFaceRealtimeHandler):
     _output_sample_rate: int | None = None
     _standby: bool = False
     _standby_loop: "asyncio.AbstractEventLoop | None" = None
+    _last_standby_notice_time: float = 0.0
     # Sound-direction watcher, injected by main.py when DoA gaze is enabled.
     sound_watcher: Any = None
 
@@ -294,14 +303,41 @@ class OpenAIRealtimeHandler(HuggingFaceRealtimeHandler):
         except Exception as e:
             logger.warning("Failed to queue wake greeting: %s", e)
 
+    async def _send_standby_sleeping_notice(self) -> None:
+        """Inform the user that the robot is currently sleeping and needs a wake phrase."""
+        if not self._standby or not self.connection:
+            return
+        now = time.monotonic()
+        if now - self._last_standby_notice_time < 4.0:
+            return
+        self._last_standby_notice_time = now
+        try:
+            logger.info("Non-wake speech received during standby; sending sleeping notice")
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": STANDBY_SLEEPING_PROMPT}],
+                },
+            )
+            await self._safe_response_create()
+        except Exception as e:
+            logger.warning("Failed to queue standby sleeping notice: %s", e)
+
     def _emit_transcript(self, role: str, text: str, final: bool = True) -> None:
-        """Watch user transcripts for wake phrases while in standby."""
-        if self._standby and role == "user" and final and matches_wake_phrase(text, configured_wake_phrases()):
+        """Watch user transcripts for wake phrases or commands while in standby."""
+        if self._standby and role == "user" and final:
             loop = self._standby_loop
-            if loop is not None and loop.is_running():
-                loop.create_task(self.wake_from_standby())
-            else:
-                logger.warning("Wake phrase heard but no running session loop to wake on")
+            if matches_wake_phrase(text, configured_wake_phrases()):
+                if loop is not None and loop.is_running():
+                    loop.create_task(self.wake_from_standby())
+                else:
+                    logger.warning("Wake phrase heard but no running session loop to wake on")
+            elif len(text.strip()) >= 2:
+                if loop is not None and loop.is_running():
+                    loop.create_task(self._send_standby_sleeping_notice())
+                else:
+                    logger.warning("Non-wake speech heard during standby but no running session loop")
         super()._emit_transcript(role, text, final)
 
     def _idle_behavior_ready(self) -> bool:

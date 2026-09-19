@@ -1,5 +1,6 @@
 import docx
 
+
 def dump_doc(path):
     print("=== DUMP FOR:", path, "===")
     doc = docx.Document(path)

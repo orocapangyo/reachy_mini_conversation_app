@@ -1,8 +1,9 @@
 """Generate contest submission Word documents (.docx) from templates."""
 
 import os
+
 import docx
-from docx.shared import Pt, RGBColor, Inches
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
