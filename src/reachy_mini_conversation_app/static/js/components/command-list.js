@@ -7,6 +7,21 @@ import { h } from "../ui.js";
 
 const COMMAND_CATEGORIES = [
   {
+    id: "sleep-system",
+    title: "수면 & 대화 상호작용",
+    icon: "🌙",
+    commands: [
+      "잘 자 (수면 모드)",
+      "자러 가",
+      "이제 쉬어",
+      "리치야 (일어나)",
+      "안녕 리치야",
+      "너는 누구야?",
+      "기분 어때?",
+      "자기소개 해줘",
+    ],
+  },
+  {
     id: "time-weather",
     title: "시간 & 날씨",
     icon: "🕒",
@@ -38,6 +53,19 @@ const COMMAND_CATEGORIES = [
     ],
   },
   {
+    id: "calendar-schedule",
+    title: "일정 & 스케줄",
+    icon: "📅",
+    commands: [
+      "오늘 일정 알려줘",
+      "내일 회의 있어?",
+      "이번 주 스케줄 뭐야?",
+      "다음 일정 언제야?",
+      "오후 일정 확인해줘",
+      "오늘 남은 일정 있어?",
+    ],
+  },
+  {
     id: "face-gaze",
     title: "얼굴 & 시선 추적",
     icon: "👤",
@@ -51,19 +79,6 @@ const COMMAND_CATEGORIES = [
       "눈 마주쳐줘",
       "정면 쳐다봐",
       "얼굴 추적 꺼줘",
-    ],
-  },
-  {
-    id: "calendar-schedule",
-    title: "일정 & 스케줄",
-    icon: "📅",
-    commands: [
-      "오늘 일정 알려줘",
-      "내일 회의 있어?",
-      "이번 주 스케줄 뭐야?",
-      "다음 일정 언제야?",
-      "오후 일정 확인해줘",
-      "오늘 남은 일정 있어?",
     ],
   },
   {
@@ -113,21 +128,6 @@ const COMMAND_CATEGORIES = [
       "귀엽게 굴어봐",
     ],
   },
-  {
-    id: "sleep-system",
-    title: "수면 & 대화 상호작용",
-    icon: "🌙",
-    commands: [
-      "잘 자 (수면 모드)",
-      "자러 가",
-      "이제 쉬어",
-      "리치야 (일어나)",
-      "안녕 리치야",
-      "너는 누구야?",
-      "기분 어때?",
-      "자기소개 해줘",
-    ],
-  },
 ];
 
 export function createCommandList() {
@@ -142,13 +142,6 @@ export function createCommandList() {
       toast.classList.remove("is-visible");
     }, 2000);
   }
-
-  const searchInput = h("input", {
-    type: "search",
-    class: "commands__search",
-    placeholder: "명령어 검색 (예: 시간, 얼굴, 춤, 타이머)...",
-    "aria-label": "명령어 검색",
-  });
 
   let activeCategoryFilter = "all";
   const categoryListContainer = h("div", { class: "commands__categories" });
@@ -173,7 +166,7 @@ export function createCommandList() {
           onClick: () => {
             activeCategoryFilter = p.id;
             renderFilterPills();
-            renderCategories(searchInput.value);
+            renderCategories();
           },
         },
         p.label
@@ -184,8 +177,7 @@ export function createCommandList() {
     filterPillsContainer.replaceChildren(...elements);
   }
 
-  function renderCategories(query = "") {
-    const q = query.trim().toLowerCase();
+  function renderCategories() {
     const rendered = [];
 
     for (const cat of COMMAND_CATEGORIES) {
@@ -193,15 +185,7 @@ export function createCommandList() {
         continue;
       }
 
-      const filteredCmds = q
-        ? cat.commands.filter(
-            (c) => c.toLowerCase().includes(q) || cat.title.toLowerCase().includes(q)
-          )
-        : cat.commands;
-
-      if (filteredCmds.length === 0) continue;
-
-      const chips = filteredCmds.map((cmd) => {
+      const chips = cat.commands.map((cmd) => {
         return h(
           "button",
           {
@@ -225,7 +209,7 @@ export function createCommandList() {
           { class: "commands__cat-header" },
           h("span", { class: "commands__cat-icon" }, cat.icon),
           h("span", { class: "commands__cat-title" }, cat.title),
-          h("span", { class: "commands__cat-count" }, `${filteredCmds.length}`)
+          h("span", { class: "commands__cat-count" }, `${cat.commands.length}`)
         ),
         h("div", { class: "commands__chips-grid" }, ...chips)
       );
@@ -233,23 +217,8 @@ export function createCommandList() {
       rendered.push(catSection);
     }
 
-    if (rendered.length === 0) {
-      rendered.push(
-        h(
-          "div",
-          { class: "commands__empty" },
-          h("span", { class: "commands__empty-icon" }, "🔍"),
-          h("p", {}, `"${query}"에 해당하는 명령어가 없습니다.`)
-        )
-      );
-    }
-
     categoryListContainer.replaceChildren(...rendered);
   }
-
-  searchInput.addEventListener("input", (e) => {
-    renderCategories(e.target.value);
-  });
 
   renderFilterPills();
   renderCategories();
@@ -273,7 +242,6 @@ export function createCommandList() {
       ),
       h("p", { class: "commands__subtitle" }, "클릭하여 복사하거나 마이크로 바로 말씀해 보세요.")
     ),
-    searchInput,
     filterPillsContainer,
     categoryListContainer,
     toast

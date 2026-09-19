@@ -2457,24 +2457,6 @@ button {
   line-height: 1.3;
 }
 
-.commands__search {
-  width: 100%;
-  padding: 6px 10px;
-  font-size: 0.8rem;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.commands__search:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
 .commands__filter-bar {
   display: flex;
   align-items: center;
@@ -2590,22 +2572,6 @@ button {
 
 .commands__chip:active {
   transform: scale(0.96);
-}
-
-.commands__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px 10px;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  text-align: center;
-  gap: 6px;
-}
-
-.commands__empty-icon {
-  font-size: 1.2rem;
 }
 
 .commands__toast {
