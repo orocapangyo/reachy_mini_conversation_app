@@ -230,17 +230,17 @@ export function createAudioMeter() {
           "div",
           { class: "audio-meter__channel-header" },
           h(
-            "div",
-            { class: "audio-meter__channel-title-wrap" },
-            h(
-              "span",
-              { class: "audio-meter__channel-name" },
-              h("span", { class: "audio-meter__channel-icon", "aria-hidden": "true" }, "🎙️"),
-              "마이크 입력 (User)"
-            ),
-            micSelect
+            "span",
+            { class: "audio-meter__channel-name" },
+            h("span", { class: "audio-meter__channel-icon", "aria-hidden": "true" }, "🎙️"),
+            "마이크 입력 (User)"
           ),
           userPercent
+        ),
+        h(
+          "div",
+          { class: "audio-meter__mic-select-wrap" },
+          micSelect
         ),
         h(
           "div",
