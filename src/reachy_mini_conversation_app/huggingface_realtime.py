@@ -147,6 +147,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
     """Realtime stream handler for the Hugging Face OpenAI-compatible endpoint."""
 
     SAMPLE_RATE = 16000
+    _response_created_for_current_turn: bool = False
 
     def __init__(
         self,
@@ -261,7 +262,14 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                             model="whisper-1",
                             language=config.REALTIME_TRANSCRIPTION_LANGUAGE,
                         ),
-                        turn_detection=ServerVad(type="server_vad", interrupt_response=True),
+                        turn_detection=ServerVad(
+                            type="server_vad",
+                            threshold=0.6,
+                            prefix_padding_ms=300,
+                            silence_duration_ms=600,
+                            create_response=True,
+                            interrupt_response=False,
+                        ),
                     ),
                     output=RealtimeAudioConfigOutputParam(
                         format={"type": "audio/pcm", "rate": 24000},
@@ -284,7 +292,14 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         model="gpt-4o-transcribe",
                         language=config.REALTIME_TRANSCRIPTION_LANGUAGE,
                     ),
-                    turn_detection=ServerVad(type="server_vad", interrupt_response=True),
+                    turn_detection=ServerVad(
+                        type="server_vad",
+                        threshold=0.6,
+                        prefix_padding_ms=300,
+                        silence_duration_ms=600,
+                        create_response=True,
+                        interrupt_response=False,
+                    ),
                 ),
                 output=RealtimeAudioConfigOutputParam(
                     format=_native_rate_audio_pcm(),  # type: ignore[typeddict-item]
@@ -797,8 +812,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._turn_user_done_at = None
                         self._turn_response_created_at = None
                         self._turn_first_audio_at = None
-                        if self._clear_queue:
-                            self._clear_queue()
+                        self._response_created_for_current_turn = False
                         self.deps.movement_manager.set_listening(True)
                         logger.debug("User speech started")
 
@@ -822,6 +836,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_speaking(True)
                         self._response_done_event.clear()
                         self._response_started_or_rejected_event.set()
+                        self._response_created_for_current_turn = True
                         if self._turn_user_done_at is not None and self._turn_response_created_at is None:
                             self._turn_response_created_at = time.perf_counter()
                             delta_ms = (self._turn_response_created_at - self._turn_user_done_at) * 1000
@@ -872,16 +887,24 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                         if is_hallucinated_transcript(transcript):
                             logger.info("Ignoring Whisper hallucinated transcript: %r", transcript)
+                            continue
+
+                        # A valid user command has completely arrived.
+                        # Interrupt the assistant only now if it was actively speaking.
+                        if not self._response_done_event.is_set():
+                            logger.info("Command received ('%s'); interrupting active assistant response", transcript)
                             if self.connection is not None:
                                 try:
                                     response_mgr = getattr(self.connection, "response", None)
                                     if response_mgr is not None and hasattr(response_mgr, "cancel"):
                                         await response_mgr.cancel()
                                 except Exception as e:
-                                    logger.debug("Failed to cancel response for hallucination: %s", e)
+                                    logger.debug("Failed to cancel response for command interruption: %s", e)
                             if self._clear_queue:
                                 self._clear_queue()
-                            continue
+                            self.deps.movement_manager.set_speaking(False)
+                            if not self._response_created_for_current_turn:
+                                await self._safe_response_create()
 
                         self._turn_user_done_at = time.perf_counter()
                         self._turn_response_created_at = None
@@ -993,6 +1016,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         if code not in (
                             "input_audio_buffer_commit_empty",
                             "conversation_already_has_active_response",
+                            "response_cancel_not_active",
                         ):
                             await self.output_queue.put(
                                 AdditionalOutputs({"role": "assistant", "content": f"[error] {msg}"})
