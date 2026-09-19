@@ -1124,8 +1124,6 @@ class LocalStream:
         """Read mic frames from the recorder and forward them to the handler."""
         input_sample_rate = self._robot.media.get_input_audio_samplerate()
         logger.debug("Audio recording started at %d Hz", input_sample_rate)
-        trailing_silence_frames_remaining = 0
-        max_trailing_silence_frames = 6  # ~600ms of silence to let server VAD commit turn closure
 
         while not self._stop_event.is_set():
             audio_frame = self._audio_service.get_audio_sample()
@@ -1134,13 +1132,12 @@ class LocalStream:
             if audio_frame is not None and not self._mic_muted:
                 processed_frame, is_gated = self._audio_service.process_noise_gate(audio_frame)
                 if not is_gated:
-                    trailing_silence_frames_remaining = max_trailing_silence_frames
                     audio_int16 = audio_to_int16(processed_frame)
-                    await self.handler.receive((input_sample_rate, audio_int16))
-                elif trailing_silence_frames_remaining > 0:
-                    trailing_silence_frames_remaining -= 1
-                    audio_int16 = audio_to_int16(processed_frame)
-                    await self.handler.receive((input_sample_rate, audio_int16))
+                else:
+                    # Send silence to keep the server VAD stream continuous;
+                    # zeroed frames prevent noise triggering while preserving turn detection.
+                    audio_int16 = audio_to_int16(np.zeros_like(audio_frame))
+                await self.handler.receive((input_sample_rate, audio_int16))
                 self._emit_level("user", audio_frame, is_gated=is_gated)
             await asyncio.sleep(0)  # avoid busy loop
 
