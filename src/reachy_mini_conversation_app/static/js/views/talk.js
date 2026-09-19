@@ -7,6 +7,7 @@
 import { applyPersonality, getMicState, listPersonalities, setMicMuted, subscribe } from "../api.js";
 import { ORB_STATES } from "../constants.js";
 import { createOrb, mapActivityToState } from "../orb.js";
+import { createAudioMeter } from "../components/audio-meter.js";
 import { consumePendingApply } from "../pending-apply.js";
 import { setPersonality } from "../personality-badge.js";
 import { h, prettifyProfileName } from "../ui.js";
@@ -126,10 +127,13 @@ export async function mountTalkView({ outlet, signal }) {
     cameraCard
   );
 
+  const audioMeter = createAudioMeter();
+
   const view = h(
     "section",
     { class: "view view--talk" },
     stage,
+    audioMeter.root,
     caption
   );
   outlet.replaceChildren(view);
@@ -186,11 +190,13 @@ export async function mountTalkView({ outlet, signal }) {
   function cleanup() {
     subscription?.close();
     orb.dispose();
+    audioMeter.dispose();
     if (defaultAction) {
       defaultAction.hidden = true;
       defaultAction.removeEventListener("click", onSetDefault);
     }
   }
+  signal.addEventListener("abort", cleanup);
 
   function restingState() {
     return muted ? ORB_STATES.MUTED : ORB_STATES.IDLE;

@@ -39,7 +39,8 @@ from reachy_mini_conversation_app.config import (
     refresh_runtime_config_from_env,
 )
 from reachy_mini_conversation_app.prompts import get_session_voice, get_session_instructions
-from reachy_mini_conversation_app.streaming import AdditionalOutputs, audio_to_float32
+from reachy_mini_conversation_app.streaming import AdditionalOutputs, audio_to_int16, audio_to_float32
+from reachy_mini_conversation_app.audio_service import AudioDeviceService
 from reachy_mini_conversation_app.camera_service import CameraService
 from reachy_mini_conversation_app.startup_settings import read_startup_settings, write_startup_settings
 from reachy_mini_conversation_app.tools.core_tools import initialize_tools
@@ -144,6 +145,7 @@ class LocalStream:
         self._last_turn_state: Optional[str] = None
         # Per-role throttle timestamps for conversation.level (orb audio meter).
         self._last_level_emit: dict[str, float] = {}
+        self._audio_service = AudioDeviceService.get_instance()
         self._install_handler(handler)
 
     def _install_handler(self, handler: ConversationHandler) -> None:
@@ -174,7 +176,7 @@ class LocalStream:
     _LEVEL_INTERVAL_S = 1.0 / 15.0
     _LEVEL_GAIN = 6.0
 
-    def _emit_level(self, role: str, frame: Any) -> None:
+    def _emit_level(self, role: str, frame: Any, is_gated: bool = False) -> None:
         """Emit a throttled conversation.level (RMS) for ``role`` (user/assistant)."""
         if self._rpc is None:
             return
@@ -188,7 +190,10 @@ class LocalStream:
         except Exception:
             return
         level = max(0.0, min(1.0, rms * self._LEVEL_GAIN))
-        self._rpc.broadcast_threadsafe("conversation.level", {"role": role, "rms": round(level, 3)})
+        payload: dict[str, object] = {"role": role, "rms": round(level, 3)}
+        if role == "user":
+            payload["gated"] = is_gated
+        self._rpc.broadcast_threadsafe("conversation.level", payload)
 
     # Map backend activity reasons to the orb's turn states (mirrors the old
     # browser orb's mapActivityToState so the orb reliably reaches listening/
@@ -585,6 +590,32 @@ class LocalStream:
 
         camera_service = CameraService.get_instance()
         camera_service.set_deps_provider(lambda: self.handler.deps if self.handler else None)
+        audio_service = self._audio_service
+
+        @settings_app.get("/api/audio/devices")
+        def _audio_devices() -> dict[str, object]:
+            """List available microphone devices and the currently active device ID."""
+            return {
+                "devices": audio_service.list_devices(),
+                "active": audio_service.get_active_device_id(),
+            }
+
+        @settings_app.post("/api/audio/select")
+        def _audio_select(device: str = "auto") -> dict[str, object]:
+            """Select active microphone device source."""
+            ok = audio_service.select_device(device)
+            return {"ok": ok, "active": audio_service.get_active_device_id()}
+
+        @settings_app.get("/api/audio/noise_gate")
+        def _get_noise_gate() -> dict[str, object]:
+            """Return the current noise gate threshold."""
+            return {"threshold": audio_service.get_noise_gate_threshold()}
+
+        @settings_app.post("/api/audio/noise_gate")
+        def _set_noise_gate(threshold: float = 0.0) -> dict[str, object]:
+            """Set active noise gate threshold (0.0 to 1.0)."""
+            val = audio_service.set_noise_gate_threshold(threshold)
+            return {"ok": True, "threshold": val}
 
         @settings_app.get("/api/camera/devices")
         def _camera_devices() -> dict[str, object]:
@@ -1039,6 +1070,11 @@ class LocalStream:
             logger.debug(f"Error stopping recording (may already be stopped): {e}")
 
         try:
+            self._audio_service.close()
+        except Exception as e:
+            logger.debug("Error stopping audio service: %s", e)
+
+        try:
             self._robot.media.stop_playing()
         except Exception as e:
             logger.debug(f"Error stopping playback (may already be stopped): {e}")
@@ -1087,13 +1123,17 @@ class LocalStream:
     async def record_loop(self) -> None:
         """Read mic frames from the recorder and forward them to the handler."""
         input_sample_rate = self._robot.media.get_input_audio_samplerate()
-        logger.debug(f"Audio recording started at {input_sample_rate} Hz")
+        logger.debug("Audio recording started at %d Hz", input_sample_rate)
 
         while not self._stop_event.is_set():
-            audio_frame = self._robot.media.get_audio_sample()
+            audio_frame = self._audio_service.get_audio_sample()
+            if audio_frame is None:
+                audio_frame = self._robot.media.get_audio_sample()
             if audio_frame is not None and not self._mic_muted:
-                await self.handler.receive((input_sample_rate, audio_frame))
-                self._emit_level("user", audio_frame)
+                processed_frame, is_gated = self._audio_service.process_noise_gate(audio_frame)
+                audio_int16 = audio_to_int16(processed_frame)
+                await self.handler.receive((input_sample_rate, audio_int16))
+                self._emit_level("user", audio_frame, is_gated=is_gated)
             await asyncio.sleep(0)  # avoid busy loop
 
     async def play_loop(self) -> None:

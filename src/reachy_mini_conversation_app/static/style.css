@@ -1715,6 +1715,418 @@ button {
   letter-spacing: 0.01em;
 }
 
+/* Real-time Bar-type Audio Level Gauge (Live Meter) */
+.talk__audio-meter-panel {
+  width: 100%;
+  max-width: 820px;
+  background: color-mix(in srgb, var(--bg-elev, #18181b) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius, 16px);
+  padding: 16px 20px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast, 0.2s), box-shadow var(--transition-fast, 0.2s);
+}
+
+.talk__audio-meter-panel:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.audio-meter__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.audio-meter__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-meter__icon {
+  font-size: 1.1rem;
+}
+
+.audio-meter__title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text, #f4f4f5);
+}
+
+.audio-meter__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.audio-meter__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+
+.audio-meter__status-text {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #34d399;
+}
+
+.audio-meter__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.audio-meter__channel {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm, 10px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audio-meter__channel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.audio-meter__channel-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.audio-meter__mic-select {
+  background: rgba(18, 18, 24, 0.85);
+  color: var(--text-soft, #e4e4e7);
+  font-size: 0.73rem;
+  font-family: inherit;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px 22px 2px 8px;
+  cursor: pointer;
+  outline: none;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%226%22%20viewBox%3D%220%200%2010%206%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%239ca3af%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22m1%201%204%204%204-4%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 9px 5px;
+  transition: border-color var(--transition, 150ms ease), box-shadow var(--transition, 150ms ease);
+}
+
+.audio-meter__mic-select:hover {
+  border-color: rgba(94, 234, 212, 0.35);
+  color: #fff;
+}
+
+.audio-meter__mic-select:focus {
+  border-color: var(--accent, #5eead4);
+  box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.2);
+}
+
+.audio-meter__mic-select option {
+  background: #18181b;
+  color: #f4f4f5;
+}
+
+.audio-meter__channel-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-soft, #d4d4d8);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.audio-meter__channel-icon {
+  font-size: 0.95rem;
+}
+
+.audio-meter__value {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text, #f4f4f5);
+  letter-spacing: 0.02em;
+}
+
+/* Horizontal Volume Progress Bar Track */
+.audio-meter__bar-track {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.audio-meter__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  transition: width 0.06s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.audio-meter__fill--user {
+  background: linear-gradient(90deg, #10b981 0%, #06b6d4 70%, #3b82f6 100%);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+}
+
+.audio-meter__fill--user.audio-meter__fill--gated {
+  background: linear-gradient(90deg, rgba(234, 179, 8, 0.4) 0%, rgba(245, 158, 11, 0.5) 100%);
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.3);
+}
+
+.audio-meter__fill--assistant {
+  background: linear-gradient(90deg, #f59e0b 0%, #ff9500 70%, #f43f5e 100%);
+  box-shadow: 0 0 10px rgba(255, 149, 0, 0.5);
+}
+
+.audio-meter__threshold-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.6);
+  z-index: 3;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.audio-meter__peak {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: #ffffff;
+  box-shadow: 0 0 6px #ffffff;
+  border-radius: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-100%);
+  transition: opacity 0.15s ease;
+}
+
+/* Noise Gate Controls */
+.audio-meter__noise-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.audio-meter__noise-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.audio-meter__noise-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-soft, #a1a1aa);
+  letter-spacing: 0.01em;
+}
+
+.audio-meter__noise-icon {
+  font-size: 0.8rem;
+}
+
+.audio-meter__gate-status {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+
+.audio-meter__gate-status--idle {
+  background: rgba(255, 255, 255, 0.08);
+  color: #a1a1aa;
+}
+
+.audio-meter__gate-status--gated {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+}
+
+.audio-meter__gate-status--open {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+}
+
+.audio-meter__noise-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audio-meter__noise-slider {
+  flex: 1;
+  min-width: 90px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.audio-meter__noise-slider:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.audio-meter__noise-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent, #5eead4);
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.6);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.audio-meter__noise-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 10px rgba(94, 234, 212, 0.9);
+}
+
+.audio-meter__noise-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-soft, #d4d4d8);
+  min-width: 32px;
+  text-align: center;
+}
+
+.audio-meter__noise-badge[data-active="true"] {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.audio-meter__preset-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audio-meter__preset-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.audio-meter__preset-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.audio-meter__preset-btn--active {
+  background: rgba(94, 234, 212, 0.18);
+  border-color: rgba(94, 234, 212, 0.4);
+  color: var(--accent, #5eead4);
+}
+
+/* 12-Band Equalizer Dynamic Vertical Bars */
+.audio-meter__eq-container {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px;
+  height: 28px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.audio-meter__eq-bar {
+  flex: 1;
+  min-width: 3px;
+  height: 8%;
+  border-radius: 2px 2px 0 0;
+  background: rgba(255, 255, 255, 0.15);
+  transition: height 0.07s cubic-bezier(0.1, 0.9, 0.2, 1), background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.audio-meter__eq-bar--user[data-active="true"] {
+  background: linear-gradient(180deg, #06b6d4 0%, #10b981 100%);
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.4);
+}
+
+.audio-meter__eq-bar--assistant[data-active="true"] {
+  background: linear-gradient(180deg, #f43f5e 0%, #f59e0b 100%);
+  box-shadow: 0 0 6px rgba(255, 149, 0, 0.4);
+}
+
+
 /* Vision and Face Detection Settings */
 .settings-camera-preview-card {
   position: relative;

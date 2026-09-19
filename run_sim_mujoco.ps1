@@ -2,6 +2,7 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $Host.UI.RawUI.WindowTitle = "Reachy Mini - DeskMate Launcher"
+Set-Location $PSScriptRoot
 
 Clear-Host
 Write-Host "======================================================================" -ForegroundColor Cyan
@@ -17,7 +18,7 @@ Get-NetTCPConnection -LocalPort 8000, 7860 -ErrorAction SilentlyContinue | ForEa
 Start-Sleep -Seconds 1
 
 Write-Host "[1/3] Launching MuJoCo 3D Simulation Daemon in a new window..." -ForegroundColor Green
-Start-Process "uv" -ArgumentList "run reachy-mini-daemon --sim"
+Start-Process powershell.exe -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", "`$Host.UI.RawUI.WindowTitle = 'Reachy Mini - MuJoCo 3D Daemon'; uv run reachy-mini-daemon --sim" -WorkingDirectory $PSScriptRoot -WindowStyle Normal
 
 Write-Host "[2/3] Waiting for MuJoCo Daemon (http://127.0.0.1:8000) to be ready..." -ForegroundColor Yellow
 $daemonReady = $false
