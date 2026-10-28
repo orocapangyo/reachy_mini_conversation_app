@@ -20,6 +20,7 @@ from reachy_mini.apps.jsonrpc_server import JsonRpcServer
 from reachy_mini.media.media_manager import MediaBackend
 from reachy_mini_conversation_app.config import (
     HF_BACKEND,
+    GEMINI_BACKEND,
     LOCKED_PROFILE,
     HF_REALTIME_WS_URL_ENV,
     CONVERSATION_BACKEND_ENV,
@@ -35,6 +36,7 @@ from reachy_mini_conversation_app.config import (
     build_hf_direct_ws_url,
     has_hf_realtime_target,
     parse_hf_direct_target,
+    get_conversation_backend,
     get_hf_connection_selection,
     refresh_runtime_config_from_env,
 )
@@ -559,13 +561,23 @@ class LocalStream:
             hf_direct_host, hf_direct_port = parse_hf_direct_target(hf_ws_url)
             hf_connection_selection = get_hf_connection_selection()
             is_openai = config.CONVERSATION_BACKEND == "openai"
+            is_gemini = config.CONVERSATION_BACKEND == GEMINI_BACKEND
             has_openai_key = bool((config.OPENAI_API_KEY or "").strip())
+            has_gemini_key = bool((getattr(config, "GEMINI_API_KEY", None) or "").strip())
             has_hf_connection = hf_connection_selection.has_target
             backend_connection = self._backend_connection_status()
-            can_proceed = has_openai_key if is_openai else has_hf_connection
+            if is_openai:
+                can_proceed = has_openai_key
+                has_key = has_openai_key
+            elif is_gemini:
+                can_proceed = has_gemini_key
+                has_key = has_gemini_key
+            else:
+                can_proceed = has_hf_connection
+                has_key = has_hf_connection
             return {
                 "backend": config.CONVERSATION_BACKEND,
-                "has_key": has_openai_key if is_openai else has_hf_connection,
+                "has_key": has_key,
                 "has_hf_session_url": bool(hf_session_url),
                 "has_hf_ws_url": bool(hf_ws_url),
                 "has_hf_connection": has_hf_connection,
@@ -943,7 +955,7 @@ class LocalStream:
                     await self._sleep_or_restart_requested(self._backend_retry_delay)
                     continue
 
-            if not has_hf_realtime_target():
+            if get_conversation_backend() == HF_BACKEND and not has_hf_realtime_target():
                 self._set_backend_connection_state(
                     "waiting_for_config", f"{HF_REALTIME_WS_URL_ENV} is not configured."
                 )

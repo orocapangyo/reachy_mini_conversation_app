@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import reachy_mini_conversation_app.console as console_mod
-from reachy_mini_conversation_app.config import HF_AVAILABLE_VOICES, config
+from reachy_mini_conversation_app.config import GEMINI_BACKEND, HF_AVAILABLE_VOICES, config
 from reachy_mini_conversation_app.console import LocalStream
 from reachy_mini_conversation_app.startup_settings import (
     StartupSettings,
@@ -889,3 +889,117 @@ def test_rpc_settings_methods() -> None:
     assert isinstance(r2["result"], list)
     assert "spaces" in r3["result"]
     assert "enabled_tools" in r4["result"]
+
+
+@pytest.mark.asyncio
+async def test_startup_loop_skips_hf_target_check_for_gemini_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the backend is gemini, _run_handler_startup_loop must NOT wait for an HF target.
+
+    Without the guard, a gemini backend with no HF target configured would get stuck in
+    "waiting_for_config" forever. This test verifies the guard routes past that check.
+    """
+    # Simulate gemini backend by patching get_conversation_backend in console module
+    monkeypatch.setattr(
+        "reachy_mini_conversation_app.console.get_conversation_backend",
+        lambda: GEMINI_BACKEND,
+    )
+    # Simulate no HF target configured (would trigger the stuck state without the guard)
+    monkeypatch.setattr(
+        "reachy_mini_conversation_app.console.has_hf_realtime_target",
+        lambda: False,
+    )
+
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+
+    class FakeGeminiHandler:
+        """Minimal handler that signals when start_up is reached."""
+
+        output_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def start_up(self) -> None:
+            started.set()
+            await stopped.wait()
+
+        async def shutdown(self) -> None:
+            stopped.set()
+
+        async def receive(self, _frame: Any) -> None:
+            return None
+
+        async def emit(self) -> None:
+            return None
+
+    handler = FakeGeminiHandler()
+    robot = SimpleNamespace(media=SimpleNamespace(audio=None, backend=None))
+    stream = LocalStream(handler, robot)
+    stream._backend_retry_delay = 0.01
+
+    startup_task = asyncio.create_task(stream._run_handler_startup_loop())
+    try:
+        # start_up() must be reached (not stuck in waiting_for_config)
+        await asyncio.wait_for(started.wait(), timeout=2.0)
+    finally:
+        stream._stop_event.set()
+        stopped.set()
+        startup_task.cancel()
+        try:
+            await startup_task
+        except asyncio.CancelledError:
+            pass
+
+    assert started.is_set(), "_run_handler_startup_loop did not reach start_up() for gemini backend"
+
+
+def test_status_payload_gemini_backend_reflects_gemini_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """conversation.status must expose GEMINI_API_KEY presence when backend=gemini.
+
+    Without the gemini branch in _status_payload, can_proceed and has_key are
+    always False for the gemini backend because the code only checks OpenAI key
+    or HF connection.
+    """
+    monkeypatch.setattr(config, "CONVERSATION_BACKEND", GEMINI_BACKEND)
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "AIza-test-key")
+    # Ensure HF target is absent so any stray HF logic cannot accidentally set can_proceed=True
+    monkeypatch.setattr(config, "HF_REALTIME_CONNECTION_MODE", "local")
+    monkeypatch.setattr(config, "HF_REALTIME_SESSION_URL", None)
+    monkeypatch.setattr(config, "HF_REALTIME_WS_URL", None)
+
+    app = FastAPI()
+    robot = SimpleNamespace(media=SimpleNamespace(audio=None, backend=None))
+    stream = LocalStream(MagicMock(), robot, settings_app=app, instance_path=str(tmp_path))
+    stream._init_settings_ui_if_needed()
+
+    data = _rpc_call(app, "conversation.status")["result"]
+
+    assert data["backend"] == GEMINI_BACKEND
+    assert data["has_key"] is True
+    assert data["can_proceed"] is True
+
+
+def test_status_payload_gemini_backend_no_key_cannot_proceed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """conversation.status must report can_proceed=False when GEMINI_API_KEY is absent."""
+    monkeypatch.setattr(config, "CONVERSATION_BACKEND", GEMINI_BACKEND)
+    monkeypatch.setattr(config, "GEMINI_API_KEY", None)
+    monkeypatch.setattr(config, "HF_REALTIME_CONNECTION_MODE", "local")
+    monkeypatch.setattr(config, "HF_REALTIME_SESSION_URL", None)
+    monkeypatch.setattr(config, "HF_REALTIME_WS_URL", None)
+
+    app = FastAPI()
+    robot = SimpleNamespace(media=SimpleNamespace(audio=None, backend=None))
+    stream = LocalStream(MagicMock(), robot, settings_app=app, instance_path=str(tmp_path))
+    stream._init_settings_ui_if_needed()
+
+    data = _rpc_call(app, "conversation.status")["result"]
+
+    assert data["backend"] == GEMINI_BACKEND
+    assert data["has_key"] is False
+    assert data["can_proceed"] is False
