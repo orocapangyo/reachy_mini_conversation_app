@@ -374,6 +374,101 @@ def test_backend_config_rejects_invalid_hf_port_zero(
     assert resp["error"]["data"]["reason"] == "invalid_hf_port"
 
 
+def _isolate_backend_env(monkeypatch: pytest.MonkeyPatch, **env: str) -> None:
+    """Pin backend env vars so runtime persistence is undone after each test."""
+    for name in ("CONVERSATION_BACKEND", "OPENAI_API_KEY", "GEMINI_API_KEY"):
+        if name in env:
+            monkeypatch.setenv(name, env[name])
+        else:
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(config, "CONVERSATION_BACKEND", config.CONVERSATION_BACKEND)
+    monkeypatch.setattr(config, "OPENAI_API_KEY", config.OPENAI_API_KEY)
+    monkeypatch.setattr(config, "GEMINI_API_KEY", config.GEMINI_API_KEY)
+
+
+def test_backend_select_switches_to_gemini_and_requests_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selecting Gemini with a key persists both values and reconnects in process."""
+    _isolate_backend_env(monkeypatch, CONVERSATION_BACKEND="openai", OPENAI_API_KEY="sk-test")
+
+    app = FastAPI()
+    handler = MagicMock()
+    handler.shutdown = AsyncMock()
+    robot = SimpleNamespace(media=SimpleNamespace(audio=None, backend=None))
+    stream = LocalStream(
+        handler,
+        robot,
+        settings_app=app,
+        instance_path=str(tmp_path),
+        handler_factory=lambda _voice: handler,
+        startup_voice="marin",
+    )
+    stream._init_settings_ui_if_needed()
+
+    data = _rpc_call(app, "backend.select", {"backend": "gemini", "api_key": "gm-test"})["result"]
+
+    assert data["ok"] is True
+    assert data["backend"] == GEMINI_BACKEND
+    assert data["has_gemini_key"] is True
+    assert data["has_openai_key"] is True
+    assert data["can_proceed"] is True
+    assert stream._restart_requested.is_set()
+    assert stream._voice_override is None
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "CONVERSATION_BACKEND=gemini" in env_text
+    assert "GEMINI_API_KEY=gm-test" in env_text
+
+
+def test_backend_select_reuses_saved_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Switching back to a backend whose key is already set needs no key in the payload."""
+    _isolate_backend_env(monkeypatch, CONVERSATION_BACKEND="gemini", OPENAI_API_KEY="sk-test", GEMINI_API_KEY="gm")
+
+    app = FastAPI()
+    robot = SimpleNamespace(media=SimpleNamespace(audio=None, backend=None))
+    stream = LocalStream(MagicMock(), robot, settings_app=app, instance_path=str(tmp_path))
+    stream._init_settings_ui_if_needed()
+
+    data = _rpc_call(app, "backend.select", {"backend": "openai"})["result"]
+
+    assert data["backend"] == "openai"
+    assert data["can_proceed"] is True
+    assert "OPENAI_API_KEY=sk-test" not in (tmp_path / ".env").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("params", "reason"),
+    [
+        ({"backend": "gemini"}, "empty_key"),
+        ({"backend": "huggingface"}, "invalid_backend"),
+        ({}, "invalid_backend"),
+    ],
+)
+def test_backend_select_rejects_invalid_requests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    params: dict[str, str],
+    reason: str,
+) -> None:
+    """Unknown backends and missing keys are rejected without changing the backend."""
+    _isolate_backend_env(monkeypatch, CONVERSATION_BACKEND="openai", OPENAI_API_KEY="sk-test")
+    monkeypatch.setattr(config, "CONVERSATION_BACKEND", "openai")
+
+    app = FastAPI()
+    robot = SimpleNamespace(media=SimpleNamespace(audio=None, backend=None))
+    stream = LocalStream(MagicMock(), robot, settings_app=app, instance_path=str(tmp_path))
+    stream._init_settings_ui_if_needed()
+
+    resp = _rpc_call(app, "backend.select", params)
+
+    assert resp["error"]["data"]["reason"] == reason
+    assert config.CONVERSATION_BACKEND == "openai"
+
+
 def test_status_reports_direct_hf_ws_url_as_ready(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

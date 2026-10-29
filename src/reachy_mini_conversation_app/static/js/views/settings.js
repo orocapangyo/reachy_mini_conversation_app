@@ -6,6 +6,7 @@ import {
   getVisionSettings,
   listVoices,
   saveBackendConfig,
+  selectBackend,
   saveVisionSettings,
   testFaceDetection,
   getCalendarStatus,
@@ -24,16 +25,32 @@ const HF_CONNECTION_MODES = Object.freeze({
 const DEFAULT_HF_HOST = "localhost";
 const DEFAULT_HF_PORT = 8765;
 
+const REALTIME_BACKENDS = Object.freeze({
+  OPENAI: "openai",
+  GEMINI: "gemini",
+});
+
+const REALTIME_BACKEND_LABELS = Object.freeze({
+  [REALTIME_BACKENDS.OPENAI]: "OpenAI Realtime",
+  [REALTIME_BACKENDS.GEMINI]: "Gemini Live",
+});
+
 const HF_MODE_HINTS = Object.freeze({
   [HF_CONNECTION_MODES.DEPLOYED]: "Uses the hosted Hugging Face backend. No API key required.",
   [HF_CONNECTION_MODES.LOCAL]: "Connects directly to the host and port below.",
 });
 
 export async function mountSettingsView({ outlet, signal }) {
+  const refreshAfterBackendChange = () =>
+    Promise.all([
+      refreshStatus({ statusSection, connectionSection, backendSection, signal }),
+      refreshVoices({ voiceSection, signal }),
+    ]);
+  const backendSection = buildBackendSection({ onSaved: refreshAfterBackendChange });
   const connectionSection = buildConnectionSection({
     onSaved: () =>
       Promise.all([
-        refreshStatus({ statusSection, connectionSection, signal }),
+        refreshStatus({ statusSection, connectionSection, backendSection, signal }),
         refreshVoices({ voiceSection, signal }),
         refreshVision({ visionSection, signal }),
         refreshCalendar({ calendarSection, signal }),
@@ -51,8 +68,9 @@ export async function mountSettingsView({ outlet, signal }) {
       "header",
       { class: "view-header" },
       h("h1", { class: "view-title" }, "Settings"),
-      h("p", { class: "view-subtitle" }, "Connection, camera & vision, Google calendar, voice, and runtime state.")
+      h("p", { class: "view-subtitle" }, "Backend, connection, camera & vision, Google calendar, voice, and runtime state.")
     ),
+    backendSection.element,
     connectionSection.element,
     visionSection.element,
     calendarSection.element,
@@ -62,11 +80,96 @@ export async function mountSettingsView({ outlet, signal }) {
   outlet.replaceChildren(view);
 
   await Promise.all([
-    refreshStatus({ statusSection, connectionSection, signal }),
+    refreshStatus({ statusSection, connectionSection, backendSection, signal }),
     refreshVoices({ voiceSection, signal }),
     refreshVision({ visionSection, signal }),
     refreshCalendar({ calendarSection, signal }),
   ]);
+}
+
+function buildBackendSection({ onSaved } = {}) {
+  const backendSelect = h(
+    "select",
+    { class: "settings-select", name: "backend" },
+    ...Object.entries(REALTIME_BACKEND_LABELS).map(([value, label]) => h("option", { value }, label))
+  );
+  const apiKeyInput = h("input", {
+    type: "password",
+    name: "api_key",
+    autocomplete: "off",
+    placeholder: "",
+    class: "settings-input",
+  });
+  const hint = h("p", { class: "settings-hint" }, "");
+  const status = h("p", { class: "settings-status", role: "status", "aria-live": "polite" });
+  const submitButton = h("button", { type: "submit", class: "btn btn--primary" }, "Switch backend");
+  let keyState = { [REALTIME_BACKENDS.OPENAI]: false, [REALTIME_BACKENDS.GEMINI]: false };
+
+  const form = h(
+    "form",
+    { class: "settings-form" },
+    h("label", { class: "settings-field" }, h("span", { class: "settings-label" }, "Realtime backend"), backendSelect),
+    h("label", { class: "settings-field" }, h("span", { class: "settings-label" }, "API key"), apiKeyInput),
+    hint,
+    h("div", { class: "settings-actions" }, submitButton),
+    status
+  );
+
+  const element = h(
+    "section",
+    { class: "settings-section" },
+    h("h2", { class: "settings-section-title" }, "Realtime backend"),
+    form
+  );
+
+  function syncKeyField() {
+    const hasKey = keyState[backendSelect.value];
+    apiKeyInput.required = !hasKey;
+    apiKeyInput.placeholder = hasKey ? "Saved key in use (leave blank to keep)" : "Required";
+    hint.textContent = "Switching reconnects the conversation with the same personality and tools.";
+  }
+
+  backendSelect.addEventListener("change", syncKeyField);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (submitButton.disabled) return;
+    submitButton.disabled = true;
+    form.setAttribute("aria-busy", "true");
+    status.classList.remove("is-error");
+    status.textContent = "Switching…";
+    try {
+      const payload = { backend: backendSelect.value };
+      const apiKey = apiKeyInput.value.trim();
+      if (apiKey) payload.api_key = apiKey;
+      const result = await selectBackend(payload);
+      apiKeyInput.value = "";
+      status.textContent = result?.message || "Saved.";
+      await onSaved?.();
+    } catch (error) {
+      status.textContent = `Failed to switch: ${describeError(error)}`;
+      status.classList.add("is-error");
+    } finally {
+      submitButton.disabled = false;
+      form.removeAttribute("aria-busy");
+    }
+  });
+
+  syncKeyField();
+
+  return {
+    element,
+    syncFromStatus(payload) {
+      keyState = {
+        [REALTIME_BACKENDS.OPENAI]: Boolean(payload?.has_openai_key),
+        [REALTIME_BACKENDS.GEMINI]: Boolean(payload?.has_gemini_key),
+      };
+      if (Object.values(REALTIME_BACKENDS).includes(payload?.backend)) {
+        backendSelect.value = payload.backend;
+      }
+      syncKeyField();
+    },
+  };
 }
 
 function buildConnectionSection({ onSaved } = {}) {
@@ -535,6 +638,7 @@ function buildStatusSection() {
     element,
     render(payload) {
       list.replaceChildren();
+      list.appendChild(statusRow("Realtime backend", REALTIME_BACKEND_LABELS[payload.backend] || "Hugging Face"));
       list.appendChild(statusRow("HF connection", formatHfMode(payload.hf_connection_mode)));
       if (payload.hf_connection_mode === HF_CONNECTION_MODES.LOCAL) {
         list.appendChild(statusRow("HF target", formatHfTarget(payload)));
@@ -599,7 +703,7 @@ function formatHfTarget(payload) {
   return `${host}:${port || DEFAULT_HF_PORT}`;
 }
 
-async function refreshStatus({ statusSection, connectionSection, signal }) {
+async function refreshStatus({ statusSection, connectionSection, backendSection, signal }) {
   try {
     const payload = await untilReady(getStatus, signal);
     if (signal.aborted) return;

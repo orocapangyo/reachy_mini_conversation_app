@@ -22,6 +22,9 @@ from reachy_mini_conversation_app.config import (
     HF_BACKEND,
     GEMINI_BACKEND,
     LOCKED_PROFILE,
+    OPENAI_BACKEND,
+    GEMINI_API_KEY_ENV,
+    OPENAI_API_KEY_ENV,
     HF_REALTIME_WS_URL_ENV,
     CONVERSATION_BACKEND_ENV,
     HF_LOCAL_CONNECTION_MODE,
@@ -578,6 +581,8 @@ class LocalStream:
             return {
                 "backend": config.CONVERSATION_BACKEND,
                 "has_key": has_key,
+                "has_openai_key": has_openai_key,
+                "has_gemini_key": has_gemini_key,
                 "has_hf_session_url": bool(hf_session_url),
                 "has_hf_ws_url": bool(hf_ws_url),
                 "has_hf_connection": has_hf_connection,
@@ -887,6 +892,32 @@ class LocalStream:
                 message = "Connection saved. Reconnecting backend."
             else:
                 message = "Connection saved. Restart Reachy Mini Conversation from the desktop app to apply it."
+            return {"ok": True, "message": message, **_status_payload()}
+
+        @rpc.method("backend.select")  # type: ignore[untyped-decorator]
+        def _rpc_backend_select(params: dict[str, object]) -> dict[str, object]:
+            """Switch between the OpenAI and Gemini realtime backends at runtime."""
+            backend = str(params.get("backend") or "").strip().lower()
+            key_env_by_backend = {OPENAI_BACKEND: OPENAI_API_KEY_ENV, GEMINI_BACKEND: GEMINI_API_KEY_ENV}
+            key_env = key_env_by_backend.get(backend)
+            if key_env is None:
+                raise JsonRpcError("unknown backend", reason="invalid_backend", code=-32602)
+            api_key = str(params.get("api_key") or "").strip()
+            if not api_key and not (os.getenv(key_env) or "").strip():
+                raise JsonRpcError(f"{key_env} is required", reason="empty_key", code=-32602)
+
+            updates = {CONVERSATION_BACKEND_ENV: backend}
+            if api_key:
+                updates[key_env] = api_key
+            self._persist_env_values(updates)
+            # Voice names are backend-specific; let the new backend use its configured default.
+            self._voice_override = None
+
+            if self._can_rebuild_handler():
+                self._mark_restart_requested("backend_selected")
+                message = f"Switched to {backend}. Reconnecting backend."
+            else:
+                message = "Backend saved. Restart Reachy Mini Conversation from the desktop app to apply it."
             return {"ok": True, "message": message, **_status_payload()}
 
         rpc.mount(settings_app)
