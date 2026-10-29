@@ -1,0 +1,53 @@
+{
+  "profile": "desk_companion_ko",
+  "scenarios": [
+    {
+      "id": "s1_welcome",
+      "scene": "시연 씬 1 — 착석 환영",
+      "text": "리치야, 나 책상에 앉았어!",
+      "expected_tools": ["play_emotion"]
+    },
+    {
+      "id": "s2_schedule",
+      "scene": "시연 씬 2 — 일정 브리핑",
+      "text": "오늘 중요한 개발 일정이나 할 일 확인해 줘.",
+      "expected_tools": ["get_schedule"]
+    },
+    {
+      "id": "s3_pomodoro",
+      "scene": "시연 씬 3 — 뽀모도로 시작",
+      "text": "지금부터 25분간 집중 코딩할게. 뽀모도로 시작해 줘.",
+      "expected_tools": ["pomodoro_timer"]
+    },
+    {
+      "id": "s4_celebrate",
+      "scene": "시연 씬 4 — 감정 반응",
+      "text": "리치야 잠깐만! 방금 기능 테스트 성공했어!",
+      "expected_tools": ["play_emotion"]
+    },
+    {
+      "id": "x1_weather",
+      "scene": "추가 — 날씨",
+      "text": "오늘 서울 날씨 어때?",
+      "expected_tools": ["pollen_robotics_reachy_mini_weather_tool__get_weather"]
+    },
+    {
+      "id": "x2_time",
+      "scene": "추가 — 시간",
+      "text": "지금 몇 시야?",
+      "expected_tools": ["pollen_robotics_reachy_mini_time_tool__get_time"]
+    },
+    {
+      "id": "x3_chitchat",
+      "scene": "추가 — 자유 대화 (도구 없음)",
+      "text": "요즘 코딩하다 보면 좀 지치는데, 힘이 나는 말 한마디 해줄래?",
+      "expected_tools": []
+    },
+    {
+      "id": "s5_sleep",
+      "scene": "시연 씬 5 — 수면 전환",
+      "text": "오늘 작업은 여기까지 할게. 잘 자!",
+      "expected_tools": ["go_to_sleep"]
+    }
+  ]
+}
