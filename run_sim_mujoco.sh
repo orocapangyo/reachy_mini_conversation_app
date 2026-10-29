@@ -13,7 +13,7 @@ UI_PORT=7860
 DAEMON_WAIT_MAX_S=60
 PROFILE="desk_companion_ko"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 VENV_BIN="$REPO_ROOT/.venv/bin"
