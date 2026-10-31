@@ -139,7 +139,9 @@ def resample_pcm(
     if audio.size == 0 or source_rate == target_rate:
         return audio
     audio_float = audio.astype(np.float64)
-    if target_rate < source_rate:
+    # np.convolve(mode="same") returns max(len, kernel) samples, so inputs shorter
+    # than the kernel would desync fp/xp in np.interp below — skip the filter there.
+    if target_rate < source_rate and audio_float.shape[0] >= _ANTI_ALIAS_KERNEL.shape[0]:
         audio_float = np.convolve(audio_float, _ANTI_ALIAS_KERNEL, mode="same")
     target_length = max(1, round(audio.shape[0] * target_rate / source_rate))
     source_positions = np.arange(audio.shape[0], dtype=np.float64)

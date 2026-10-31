@@ -142,6 +142,7 @@ export const getCurrentVoice = () => rpcCall("voices.current");
 export const applyVoice = (voice) => rpcCall("voices.apply", { voice });
 
 export const saveBackendConfig = (payload) => rpcCall("backend.config", payload);
+export const selectBackend = (payload) => rpcCall("backend.select", payload);
 
 export const listToolSpaces = () => rpcCall("tool_spaces.list");
 export const addToolSpace = (slug) =>
