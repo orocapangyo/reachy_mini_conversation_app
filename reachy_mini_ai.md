@@ -138,8 +138,8 @@ OpenAI Realtime과 Gemini Live는 둘 다 양방향 WebSocket(전이중 통신)�
 | **연결 방식** | 공식 SDK (`client.beta.realtime.connect`) | 순수 Python `websockets.connect` 직접 연결 |
 | **엔드포인트 URL** | `wss://api.openai.com/v1/realtime?model=gpt-realtime-mini` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=...` |
 | **인증 방식** | HTTP Header (`Authorization: Bearer <KEY>`, `OpenAI-Beta: realtime=v1`) | URL Query Parameter (`?key=<KEY>`) |
-| **핸들러 파일** | `openai_realtime.py:L366` (`HuggingFaceRealtimeHandler` 상속) | `gemini_realtime.py:L263` (`ConversationHandler` 직접 구현) |
-| **마이크 입력 규격** | **24,000 Hz** (16kHz 마이크 $\rightarrow$ 24kHz 업샘플링 필수) | **16,000 Hz** (로봇 마이크 규격 무변환 직송) |
+| **핸들러 파일** | `openai_realtime.py:L151` (`HuggingFaceRealtimeHandler` 상속) | `gemini_realtime.py:L91` (`ConversationHandler` 직접 구현) |
+| **마이크 입력 규격** | **24,000 Hz** (16kHz 마이크 $\rightarrow$ 24kHz 업샘플링 필수) | **16,000 Hz** (로봇 마이크 규격 직송, 48/44.1kHz 입력 시 16kHz 자동 다운샘플링) |
 | **스피커 출력 규격** | 24,000 Hz (클라이언트에서 16kHz로 다운샘플링) | 24,000 Hz (클라이언트에서 16kHz로 다운샘플링) |
 | **오디오 포맷** | 무압축 PCM 16-bit Little-Endian, Mono, Base64 | 무압축 PCM 16-bit Little-Endian, Mono, Base64 |
 | **비전(카메라) 스트림** | 도구 호출 시 단발성 이미지 전송 중심 | WebSocket 세션 내 `realtimeInput.video` 실시간 스트림 네이티브 지원 |
@@ -272,7 +272,8 @@ OpenAI Realtime과 Gemini Live는 둘 다 양방향 WebSocket(전이중 통신)�
 
   2) Gemini 경로:
      마이크 (16 kHz)
-        ──> 리샘플링 없음 (Raw 16 kHz 유지) 
+        ──> 주파수 일치 시 리샘플링 없음 (Raw 16 kHz 유지)
+            (48kHz 등 타 규격 디바이스 입력 시 resample_pcm으로 16kHz 자동 변환)
         ──> Base64 인코딩 
         ──> realtimeInput.audio 전송 (지연 시간 최소화)
 
@@ -284,26 +285,30 @@ OpenAI Realtime과 Gemini Live는 둘 다 양방향 WebSocket(전이중 통신)�
 
   클라우드 응답 수신 (24 kHz Base64)
      ──> Base64 디코딩
-     ──> [resample_pcm (다운샘플링 + Anti-Aliasing 필터)]
+     ──> [resample_pcm (다운샘플링 + Anti-Aliasing 3-탭 필터)]
      ──> 16 kHz PCM16 변환
      ──> 로봇 스피커 버퍼 큐 전달 및 물리 사운드 출력
 ```
 
-### 3.2 리샘플링 함수 구현 (`openai_realtime.py:L112-L138`)
+### 3.2 리샘플링 함수 구현 (`openai_realtime.py:L122-L148`)
 ```python
 def resample_pcm(
-    pcm_data: bytes, 
-    orig_sr: int, 
-    target_sr: int, 
-    channels: int = 1
-) -> bytes:
-    """PCM 바이트 배열을 선형 보간 및 안티앨리어싱 필터를 거쳐 목표 샘플레이트로 변환"""
-    if orig_sr == target_sr:
-        return pcm_data
-    audio_np = np.frombuffer(pcm_data, dtype=np.int16)
-    # Scipy resample_poly 등을 활용하여 주파수 왜곡 없이 정밀 변환
-    resampled_np = signal.resample_poly(audio_np, target_sr, orig_sr).astype(np.int16)
-    return resampled_np.tobytes()
+    audio: NDArray[np.int16],
+    source_rate: int,
+    target_rate: int,
+) -> NDArray[np.int16]:
+    """단일 채널 int16 PCM을 마이크/스피커 주파수와 모델 24kHz 사이에서 선형 보간 리샘플링"""
+    if audio.size == 0 or source_rate == target_rate:
+        return audio
+    audio_float = audio.astype(np.float64)
+    # 다운샘플링 시 나이퀴스트 주파수 이상의 앨리어싱 왜곡 방지를 위해 3-탭 저역통과 필터([0.25, 0.5, 0.25]) 적용
+    if target_rate < source_rate:
+        audio_float = np.convolve(audio_float, _ANTI_ALIAS_KERNEL, mode="same")
+    target_length = max(1, round(audio.shape[0] * target_rate / source_rate))
+    source_positions = np.arange(audio.shape[0], dtype=np.float64)
+    target_positions = np.linspace(0.0, audio.shape[0] - 1, num=target_length)
+    resampled = np.interp(target_positions, source_positions, audio_float)
+    return np.round(resampled).astype(np.int16)
 ```
 
 ### 3.3 음향 에코 방지 (Acoustic Echo Gating)
@@ -346,6 +351,8 @@ default_tools = [
   "play_emotion",
   "stop_emotion",
   "camera",
+  "detect_face",
+  "detect_objects",
   "idle_do_nothing",
   "move_head",
   "go_to_sleep",
@@ -354,7 +361,11 @@ default_tools = [
   "forget",
   "head_tracking",
   "pomodoro_timer",
+  "get_schedule",
+  "pollen_robotics_reachy_mini_weather_tool__get_weather",
+  "pollen_robotics_reachy_mini_time_tool__get_time",
 ]
+greeting = "사용자에게 한국어로 '안녕하세요! 무엇을 도와드릴까요?'라고 친절하게 한 문장으로만 바로 인사해라. 생각이나 설명 멘트를 덧붙이지 말고 오직 인사말만 소리내어 말해라."
 +++
 ```
 *(적용 프로필은 `.env`의 `REACHY_MINI_CUSTOM_PROFILE=desk_companion_ko`로 지정)*
@@ -433,7 +444,7 @@ event.arguments (str)                        call["args"] (dict)
 
 ### 5.2 1단계: 수신 위치 및 규격 통일
 
-#### (1) OpenAI 수신 코드 (`huggingface_realtime.py:L862-L895`)
+#### (1) OpenAI 수신 코드 (`huggingface_realtime.py:L945-L970`)
 OpenAI는 `arguments`가 이미 문자열 형태로 전달됩니다.
 ```python
 if event.type == "response.function_call_arguments.done":
@@ -487,7 +498,7 @@ class ToolCallRoutine(BaseModel):
         return await dispatch_tool_call(tool_name=self.tool_name, args_json=self.args_json_str, deps=self.deps)
 ```
 
-### 5.4 2단계: 공통 파싱 및 실행 함수 (`core_tools.py:L454-L480`)
+### 5.4 2단계: 공통 파싱 및 실행 함수 (`core_tools.py:L521-L547`)
 어떤 백엔드를 거쳤든 최종적으로 인자를 dict로 변환하고 언패킹(`**args`)하는 로직은 단 한 곳에서 처리됩니다.
 ```python
 def _safe_load_obj(args_json: str) -> Dict[str, Any]:
@@ -523,7 +534,7 @@ async def dispatch_tool_call(tool_name: str, args_json: str, deps: ToolDependenc
 `conversation.item.create`는 **"AI의 대화창(기록장)에 새로운 쪽지를 직접 한 장 끼워 넣는 명령"**입니다.
 * **카카오톡 비유**: 사용자가 타이핑하지 않아도 "OO님이 입장하셨습니다", "투표 결과: [보기]"처럼 시스템 공지 쪽지가 단톡방에 올라오는 것과 같습니다.
 * **주요 사용 상황**:
-  1. **도구 실행 결과 보고서 제출 (`huggingface_realtime.py:L633-L639`)**:
+  1. **도구 실행 결과 보고서 제출 (`huggingface_realtime.py:L693-L700`)**:
      ```python
      await self.connection.conversation.item.create(
          item={
@@ -533,7 +544,7 @@ async def dispatch_tool_call(tool_name: str, args_json: str, deps: ToolDependenc
          },
      )
      ```
-  2. **웨이크 워드로 깨어날 때 가상 발화 주입 (`openai_realtime.py:L293-L299`)**:
+  2. **웨이크 워드로 깨어날 때 가상 발화 주입 (`openai_realtime.py:L314-L325`)**:
      ```python
      await self.connection.conversation.item.create(
          item={
