@@ -88,6 +88,7 @@ def run(
     # Putting these dependencies here makes the dashboard faster to load when the conversation app is installed
     from reachy_mini_conversation_app.moves import MovementManager
     from reachy_mini_conversation_app.config import (
+        GEMINI_BACKEND,
         OPENAI_BACKEND,
         HF_LOCAL_CONNECTION_MODE,
         config,
@@ -128,7 +129,14 @@ def run(
         except Exception as e:
             logger.warning("Failed to load startup settings: %s", e)
 
-    if get_conversation_backend() == OPENAI_BACKEND:
+    if get_conversation_backend() == GEMINI_BACKEND:
+        logger.info("Configured Gemini Live backend, model: %s", config.GEMINI_LIVE_MODEL)
+        if not (config.GEMINI_API_KEY or "").strip():
+            logger.error(
+                "CONVERSATION_BACKEND=gemini requires GEMINI_API_KEY. Set it in the environment or .env and restart."
+            )
+            sys.exit(1)
+    elif get_conversation_backend() == OPENAI_BACKEND:
         logger.info("Configured OpenAI realtime backend, model: %s", config.OPENAI_REALTIME_MODEL)
         if not (config.OPENAI_API_KEY or "").strip():
             logger.error(
@@ -220,6 +228,16 @@ def run(
 
     def build_handler(startup_voice: Optional[str] = None) -> ConversationHandler:
         """Build the realtime conversation handler for the configured backend."""
+        if get_conversation_backend() == GEMINI_BACKEND:
+            from reachy_mini_conversation_app.gemini_realtime import GeminiRealtimeHandler
+
+            logger.info("Using Gemini Live handler (model=%s)", config.GEMINI_LIVE_MODEL)
+            return GeminiRealtimeHandler(
+                deps,
+                instance_path=instance_path,
+                startup_voice=startup_voice,
+            )
+
         if get_conversation_backend() == OPENAI_BACKEND:
             from reachy_mini_conversation_app.openai_realtime import OpenAIRealtimeHandler
 

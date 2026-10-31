@@ -94,6 +94,24 @@ OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
 DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-mini"
 DEFAULT_OPENAI_VOICE = "marin"
 
+# --- Gemini Live backend -----------------------------------------------------
+GEMINI_BACKEND = "gemini"
+GEMINI_LIVE_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+DEFAULT_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview"
+DEFAULT_GEMINI_VOICE = "Kore"
+
+GEMINI_AVAILABLE_VOICES: list[str] = [
+    "Aoede",
+    "Charon",
+    "Fenrir",
+    "Kore",
+    "Puck",
+    "Leda",
+    "Orus",
+    "Zephyr",
+]
+
+
 # --- Robot daemon connection target ------------------------------------------
 REACHY_MINI_HOST_ENV = "REACHY_MINI_HOST"
 REACHY_MINI_PORT_ENV = "REACHY_MINI_PORT"
@@ -226,8 +244,10 @@ def _normalize_conversation_backend(value: str | None) -> str:
         return HF_BACKEND
     if candidate in {"openai", OPENAI_BACKEND}:
         return OPENAI_BACKEND
+    if candidate in {"gemini", "google", GEMINI_BACKEND}:
+        return GEMINI_BACKEND
     logger.warning(
-        "Invalid %s=%r. Expected hf or openai; using hf.",
+        "Invalid %s=%r. Expected hf, openai, or gemini; using hf.",
         CONVERSATION_BACKEND_ENV,
         value,
     )
@@ -394,6 +414,9 @@ class Config:
     OPENAI_API_KEY = os.getenv(OPENAI_API_KEY_ENV)
     OPENAI_REALTIME_MODEL = (os.getenv(OPENAI_REALTIME_MODEL_ENV) or "gpt-realtime-2.1").strip()
     OPENAI_VOICE = (os.getenv(OPENAI_VOICE_ENV) or "marin").strip()
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GEMINI_LIVE_MODEL = (os.getenv("GEMINI_LIVE_MODEL") or "").strip() or DEFAULT_GEMINI_LIVE_MODEL
+    GEMINI_VOICE = (os.getenv("GEMINI_VOICE") or "").strip() or DEFAULT_GEMINI_VOICE
 
     HF_REALTIME_CONNECTION_MODE = (
         _normalize_hf_connection_mode(os.getenv(HF_REALTIME_CONNECTION_MODE_ENV)) or HF_DEFAULTS.connection_mode
@@ -542,6 +565,9 @@ def refresh_runtime_config_from_env() -> None:
     config.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     config.OPENAI_REALTIME_MODEL = (os.getenv("OPENAI_REALTIME_MODEL") or "").strip() or DEFAULT_OPENAI_REALTIME_MODEL
     config.OPENAI_VOICE = (os.getenv("OPENAI_VOICE") or "").strip() or DEFAULT_OPENAI_VOICE
+    config.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    config.GEMINI_LIVE_MODEL = (os.getenv("GEMINI_LIVE_MODEL") or "").strip() or DEFAULT_GEMINI_LIVE_MODEL
+    config.GEMINI_VOICE = (os.getenv("GEMINI_VOICE") or "").strip() or DEFAULT_GEMINI_VOICE
     config.REACHY_MINI_HOST = os.getenv(REACHY_MINI_HOST_ENV)
     config.REACHY_MINI_PORT = os.getenv(REACHY_MINI_PORT_ENV)
     config.REACHY_MINI_AUTO_START_DAEMON = _env_flag("REACHY_MINI_AUTO_START_DAEMON", default=False)
@@ -556,6 +582,8 @@ def refresh_runtime_config_from_env() -> None:
 
 def get_available_voices() -> list[str]:
     """Return the curated voice list for the active backend."""
+    if get_conversation_backend() == GEMINI_BACKEND:
+        return list(GEMINI_AVAILABLE_VOICES)
     if get_conversation_backend() == OPENAI_BACKEND:
         return list(OPENAI_AVAILABLE_VOICES)
     return list(HF_AVAILABLE_VOICES)
@@ -563,6 +591,8 @@ def get_available_voices() -> list[str]:
 
 def get_default_voice() -> str:
     """Return the default voice for the active backend."""
+    if get_conversation_backend() == GEMINI_BACKEND:
+        return config.GEMINI_VOICE or DEFAULT_GEMINI_VOICE
     if get_conversation_backend() == OPENAI_BACKEND:
         return config.OPENAI_VOICE or DEFAULT_OPENAI_VOICE
     return HF_DEFAULTS.voice
