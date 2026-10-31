@@ -149,6 +149,9 @@ class LocalStream:
         # Per-role throttle timestamps for conversation.level (orb audio meter).
         self._last_level_emit: dict[str, float] = {}
         self._audio_service = AudioDeviceService.get_instance()
+        # Local acoustic wake-word listener.  None when disabled or engine fails to load.
+        # The listener's asyncio loop is wired in run() after the event loop starts.
+        self._wake_listener: Any = self._try_create_wake_listener()
         self._install_handler(handler)
 
     def _install_handler(self, handler: ConversationHandler) -> None:
@@ -173,6 +176,79 @@ class LocalStream:
                 "conversation.transcript",
                 {"role": role, "text": text, "final": final},
             )
+
+    # ------------------------------------------------------------------
+    # Wake-word listener helpers
+    # ------------------------------------------------------------------
+
+    def _try_create_wake_listener(self) -> Any:
+        """Create and return a WakeWordListener if wake-word is enabled, else None."""
+        if not config.REACHY_MINI_WAKE_WORD_ENABLED:
+            return None
+        try:
+            from reachy_mini_conversation_app.audio.wake_word import WakeWordListener  # noqa: PLC0415
+            from reachy_mini_conversation_app.audio.wake_engines import create_wake_engine  # noqa: PLC0415
+        except ImportError:
+            logger.warning("Wake-word modules not importable; local wake disabled.")
+            return None
+
+        # Lazy engine: defer the onnxruntime model load to the first sleep.  Loading
+        # it eagerly here raced GStreamer/MuJoCo native init at startup and caused
+        # intermittent segfaults near the first audio playback.
+        engine_name = config.REACHY_MINI_WAKE_ENGINE
+
+        def _build_engine() -> Any:
+            engine = create_wake_engine(engine_name)
+            if engine is None:
+                logger.warning("Wake engine %r failed to load; wake-word detection disabled.", engine_name)
+            return engine
+
+        # loop is None here; wired to the asyncio event loop in run() before recording starts.
+        listener = WakeWordListener(on_wake=self._on_wake_detected, engine_factory=_build_engine)
+        logger.info("WakeWordListener created (engine=%r, lazy load).", engine_name)
+        return listener
+
+    def _on_wake_detected(self, phrase: str) -> None:
+        """Handle a detected wake phrase.
+
+        Dispatched via asyncio event loop (call_soon_threadsafe when listener has
+        a loop, or directly from the worker thread otherwise).  Stops the listener,
+        runs the wake-up motion, then exits local standby on the handler.
+        """
+        logger.info("Wake phrase %r detected — starting wake-up sequence.", phrase)
+        if self._wake_listener is not None:
+            self._wake_listener.stop()
+
+        async def _do_wakeup() -> None:
+            try:
+                # Restart the movement manager first — go_to_sleep stopped it, so
+                # without this the wake-up motion is driven into a dead manager
+                # and the robot stays frozen in the sleep pose while still talking.
+                deps = getattr(self.handler, "deps", None)
+                mm = getattr(deps, "movement_manager", None) if deps is not None else None
+                if mm is not None:
+                    mm.start()
+                await asyncio.to_thread(self._robot.enable_motors)
+                await asyncio.to_thread(self._robot.wake_up)
+                # Re-enable the audio-reactive head wobbler disabled at sleep.
+                try:
+                    await asyncio.to_thread(self._robot.enable_wobbling)
+                except Exception as exc:
+                    logger.debug("Error re-enabling wobbling on wake: %s", exc)
+            except Exception as exc:
+                logger.warning("Wake-up motion failed (continuing): %s", exc)
+            active_handler = getattr(self, "handler", None)
+            if active_handler is not None and hasattr(active_handler, "exit_local_standby"):
+                result = await active_handler.exit_local_standby()
+                logger.info("exit_local_standby result: %s", result)
+            else:
+                logger.warning("_on_wake_detected: handler has no exit_local_standby; standby persists.")
+
+        loop = self._asyncio_loop
+        if loop is not None and loop.is_running():
+            asyncio.create_task(_do_wakeup(), name="wake-up-sequence")
+        else:
+            logger.warning("_on_wake_detected called but no running event loop; skipping wakeup.")
 
     # Audio level meter for the client orb. RMS is scaled into a visible 0..1
     # range and capped to ~15 Hz so it stays light on the DataChannel.
@@ -983,6 +1059,15 @@ class LocalStream:
                 if self._restart_requested.is_set():
                     logger.info("Backend stopped for requested restart.")
                     continue
+                # Local wake-word standby: the session was intentionally closed to
+                # wait for a wake phrase.  Do NOT auto-reconnect — poll until the
+                # wake-up sequence clears the flag, then loop back to start_up()
+                # immediately (skipping the retry sleep) for a prompt wake.
+                if getattr(self.handler, "_local_standby", False):
+                    logger.info("Backend in local standby; awaiting wake phrase (no auto-reconnect).")
+                    while getattr(self.handler, "_local_standby", False) and not self._stop_event.is_set():
+                        await asyncio.sleep(0.2)
+                    continue
                 logger.info(
                     "Backend session ended. Settings UI remains available; retrying in %.1f seconds.",
                     self._backend_retry_delay,
@@ -1042,9 +1127,13 @@ class LocalStream:
         self._robot.media.start_playing()
 
         async def runner() -> None:
-            # Capture loop for cross-thread personality actions
+            # Capture loop for cross-thread personality actions and wake-word dispatch.
             loop = asyncio.get_running_loop()
             self._asyncio_loop = loop  # type: ignore[assignment]
+            # Wire the wake listener to this loop before record_loop starts so that
+            # on_wake is dispatched via call_soon_threadsafe (thread-safe path).
+            if self._wake_listener is not None:
+                self._wake_listener._loop = loop
             # Connect the backend first so it overlaps the warmup and audio config below.
             handler_task = asyncio.create_task(self._run_handler_startup_loop(), name="realtime-handler")
             self._tasks = [handler_task]
@@ -1143,13 +1232,18 @@ class LocalStream:
             audio_frame = self._audio_service.get_audio_sample()
             if audio_frame is None:
                 audio_frame = self._robot.media.get_audio_sample()
-            if audio_frame is not None and not self._mic_muted:
-                processed_frame, is_gated = self._audio_service.process_noise_gate(audio_frame)
-                if not is_gated:
-                    leveled_frame = self._audio_service.normalize_audio(processed_frame)
-                    audio_int16 = audio_to_int16(leveled_frame)
-                    await self.handler.receive((input_sample_rate, audio_int16))
-                self._emit_level("user", audio_frame, is_gated=is_gated)
+            if audio_frame is not None:
+                # Feed raw frames to the wake listener before noise gate / mute so
+                # wake words are heard even while the robot is sleeping or muted.
+                if self._wake_listener is not None:
+                    self._wake_listener.feed(input_sample_rate, audio_to_int16(audio_frame))
+                if not self._mic_muted:
+                    processed_frame, is_gated = self._audio_service.process_noise_gate(audio_frame)
+                    if not is_gated:
+                        leveled_frame = self._audio_service.normalize_audio(processed_frame)
+                        audio_int16 = audio_to_int16(leveled_frame)
+                        await self.handler.receive((input_sample_rate, audio_int16))
+                    self._emit_level("user", audio_frame, is_gated=is_gated)
             await asyncio.sleep(0)  # avoid busy loop
 
     async def play_loop(self) -> None:

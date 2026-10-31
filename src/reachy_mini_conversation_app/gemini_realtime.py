@@ -200,6 +200,15 @@ class GeminiRealtimeHandler(ConversationHandler):
         self._startup_greeting_sent: bool = False
         self._receive_task: Optional[asyncio.Task] = None  # type: ignore[type-arg]
 
+        # Local standby state (wake-word path): True while the Gemini session is
+        # intentionally closed awaiting a wake word.  _run_handler_startup_loop in
+        # console.py checks this flag to suppress auto-reconnect during standby.
+        self._local_standby: bool = False
+
+        # Event loop captured at start_up() time; used by request_local_standby()
+        # to schedule the coroutine from the synchronous go_to_sleep_action path.
+        self._asyncio_loop: "asyncio.AbstractEventLoop | None" = None
+
         # Persist the voice so it survives reconnects.
         self._voice_override: Optional[str] = self._resolve_gemini_voice(startup_voice)
 
@@ -287,6 +296,7 @@ class GeminiRealtimeHandler(ConversationHandler):
         are expected during normal session-timeout reconnects. All other
         exceptions propagate immediately.
         """
+        self._asyncio_loop = asyncio.get_running_loop()
         api_key = (getattr(config, "GEMINI_API_KEY", None) or "").strip()
         if not api_key:
             raise RuntimeError("CONVERSATION_BACKEND=gemini requires GEMINI_API_KEY to be set")
@@ -303,6 +313,11 @@ class GeminiRealtimeHandler(ConversationHandler):
                 is_ws_close = _is_websocket_close(exc)
                 if not (is_api_err or is_ws_close):
                     raise
+
+                # Local standby: session was intentionally closed by enter_local_standby().
+                # exit_local_standby() will relaunch the session; do not reconnect here.
+                if self._local_standby:
+                    return
 
                 logger.warning(
                     "Gemini Live session ended (attempt %d/%d): %s: %s",
@@ -574,6 +589,64 @@ class GeminiRealtimeHandler(ConversationHandler):
                 self.output_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
+
+    async def enter_local_standby(self) -> dict[str, Any]:
+        """Close the Gemini session for local wake-word standby without stopping the app.
+
+        Sets _local_standby=True so that _run_handler_startup_loop (console.py)
+        suppresses auto-reconnect while the robot is sleeping.  The caller is
+        responsible for starting the WakeWordListener *after* this returns.
+        """
+        self._local_standby = True
+        # Cancel the receive task WITHOUT awaiting it.  Awaiting here deadlocks:
+        # the receive task's cleanup (_run_live_session finally) calls
+        # tool_manager.shutdown(), which waits for the go_to_sleep tool to finish
+        # — but go_to_sleep is what triggered this standby and is waiting on us.
+        # Cancel-and-move-on breaks that circular wait; the task tears down on
+        # its own once this coroutine yields.
+        if self._receive_task is not None and not self._receive_task.done():
+            self._receive_task.cancel()
+            self._receive_task = None
+        # Close the session (triggers clean exit of _run_live_session).
+        if self.connection is not None:
+            try:
+                await self.connection.close()
+            except Exception as exc:
+                logger.debug("enter_local_standby: session.close() raised: %s", exc)
+            finally:
+                self.connection = None
+        self._connected_event.clear()
+        logger.info("Gemini handler entered local standby; session closing, wake listener pending.")
+        return {"status": "local_standby"}
+
+    def request_local_standby(self) -> dict[str, Any]:
+        """Schedule local standby from the synchronous go_to_sleep tool path.
+
+        Fire-and-forget: the go_to_sleep tool must NOT block on standby completion,
+        because standby's teardown (tool_manager.shutdown via _run_live_session's
+        finally) waits for this very tool to finish — blocking here deadlocks the
+        whole event loop.  We schedule enter_local_standby and return immediately;
+        it runs on the loop once the tool returns and the tool manager releases it.
+        """
+        loop = self._asyncio_loop
+        if loop is None or not loop.is_running():
+            return {"error": "local_standby unavailable: no active event loop"}
+        asyncio.run_coroutine_threadsafe(self.enter_local_standby(), loop)
+        return {"status": "local_standby"}
+
+    async def exit_local_standby(self) -> dict[str, Any]:
+        """Lift local wake-word standby so the console startup loop reconnects.
+
+        Only clears state — the session relaunch is owned by console.py's
+        _run_handler_startup_loop, which is polling on this flag.  Resets the
+        greeting flag so the reconnected session greets the user once on wakeup.
+        """
+        if not self._local_standby:
+            return {"status": "not_in_standby"}
+        self._startup_greeting_sent = False
+        self._local_standby = False
+        logger.info("Gemini handler exited local standby; console loop will reconnect.")
+        return {"status": "awake"}
 
     async def _restart_session(self) -> None:
         """Force-close the current session and relaunch it in the background.

@@ -430,6 +430,9 @@ class Config:
     REACHY_MINI_STANDBY_ON_SLEEP = _env_flag("REACHY_MINI_STANDBY_ON_SLEEP", default=True)
     REACHY_MINI_WAKE_PHRASES = os.getenv("REACHY_MINI_WAKE_PHRASES")
     REACHY_MINI_DOA_LOOK = _env_flag("REACHY_MINI_DOA_LOOK", default=True)
+    REACHY_MINI_WAKE_WORD_ENABLED = _env_flag("REACHY_MINI_WAKE_WORD_ENABLED", default=False)
+    REACHY_MINI_WAKE_ENGINE = (os.getenv("REACHY_MINI_WAKE_ENGINE") or "openwakeword").strip()
+    REACHY_MINI_WAKE_MODEL_PATH = (os.getenv("REACHY_MINI_WAKE_MODEL_PATH") or "").strip()
 
     logger.debug(
         "Backend: %s, HF mode: %s, HF session URL set: %s, HF direct URL set: %s",
@@ -571,6 +574,9 @@ def refresh_runtime_config_from_env() -> None:
     config.REACHY_MINI_STANDBY_ON_SLEEP = _env_flag("REACHY_MINI_STANDBY_ON_SLEEP", default=True)
     config.REACHY_MINI_WAKE_PHRASES = os.getenv("REACHY_MINI_WAKE_PHRASES")
     config.REACHY_MINI_DOA_LOOK = _env_flag("REACHY_MINI_DOA_LOOK", default=True)
+    config.REACHY_MINI_WAKE_WORD_ENABLED = _env_flag("REACHY_MINI_WAKE_WORD_ENABLED", default=False)
+    config.REACHY_MINI_WAKE_ENGINE = (os.getenv("REACHY_MINI_WAKE_ENGINE") or "openwakeword").strip()
+    config.REACHY_MINI_WAKE_MODEL_PATH = (os.getenv("REACHY_MINI_WAKE_MODEL_PATH") or "").strip()
     config.REACHY_MINI_CUSTOM_PROFILE = (
         LOCKED_PROFILE or (os.getenv("REACHY_MINI_CUSTOM_PROFILE") or "").strip() or None
     )

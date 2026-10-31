@@ -5,12 +5,11 @@ Only the Hugging Face-specific attachment points are overridden (client/auth,
 tool plumbing, and idle policy are inherited unchanged.
 """
 
-import re
 import time
 import base64
 import asyncio
 import logging
-from typing import Any, Tuple, Sequence
+from typing import Any, Tuple
 
 import numpy as np
 from openai import AsyncOpenAI
@@ -27,12 +26,28 @@ from openai.types.realtime.realtime_audio_input_turn_detection_param import Serv
 from reachy_mini_conversation_app.config import OPENAI_REALTIME_URL, DEFAULT_OPENAI_VOICE, config
 from reachy_mini_conversation_app.prompts import get_session_voice
 from reachy_mini_conversation_app.streaming import audio_to_int16, normalize_audio_frame
+from reachy_mini_conversation_app.audio.wake_word import (
+    DEFAULT_WAKE_PHRASES,
+    _normalize_for_wake,
+    matches_wake_phrase,
+    configured_wake_phrases,
+)
 from reachy_mini_conversation_app.tools.core_tools import ToolSpec
 from reachy_mini_conversation_app.conversation_handler import HandlerOutput
 from reachy_mini_conversation_app.huggingface_realtime import (
     HuggingFaceRealtimeHandler,
     _build_openai_compatible_client_from_realtime_url,
 )
+
+
+# Wake phrase utilities moved to audio/wake_word.py — re-exported here so that
+# existing callers (test_standby.py, etc.) continue to work without modification.
+__all__ = [
+    "DEFAULT_WAKE_PHRASES",
+    "_normalize_for_wake",
+    "configured_wake_phrases",
+    "matches_wake_phrase",
+]
 
 
 logger = logging.getLogger(__name__)
@@ -63,9 +78,6 @@ FALLBACK_OUTPUT_SAMPLE_RATE: int = 16000
 # 3-tap binomial low-pass applied before downsampling to limit aliasing.
 _ANTI_ALIAS_KERNEL = np.array([0.25, 0.5, 0.25], dtype=np.float64)
 
-# Wake phrases matched against user transcripts while in standby.
-DEFAULT_WAKE_PHRASES: tuple[str, ...] = ("깨어나", "리치미니", "일어나")
-
 # Prompt queued after waking so the model opens the conversation itself.
 WAKE_GREETING_PROMPT = (
     "(사용자가 방금 웨이크 워드로 너를 깨웠다. 한국어로 짧고 반갑게 인사하고 무엇을 도울지 물어보라.)"
@@ -77,30 +89,6 @@ STANDBY_SLEEPING_PROMPT = (
     "한국어로 '현재 수면 중입니다. 대화하시려면 리치야, 안녕, 또는 일어나라고 불러 깨워주세요.'라고 "
     "차분하고 짧게 한 문장으로만 안내하라. 절대 도구를 호출하거나 깨어나지 마라.)"
 )
-
-
-def _normalize_for_wake(text: str) -> str:
-    """Strip whitespace/punctuation and lowercase so STT spelling variants match."""
-    return re.sub(r"[\W_]+", "", text.lower())
-
-
-def matches_wake_phrase(transcript: str, phrases: Sequence[str]) -> bool:
-    """Return whether the transcript loosely contains any wake phrase."""
-    normalized = _normalize_for_wake(transcript)
-    if not normalized:
-        return False
-    for phrase in phrases:
-        normalized_phrase = _normalize_for_wake(phrase)
-        if normalized_phrase and normalized_phrase in normalized:
-            return True
-    return False
-
-
-def configured_wake_phrases() -> list[str]:
-    """Return REACHY_MINI_WAKE_PHRASES as a list, defaulting to the Korean set."""
-    raw = (getattr(config, "REACHY_MINI_WAKE_PHRASES", None) or "").strip()
-    phrases = [phrase.strip() for phrase in raw.split(",") if phrase.strip()]
-    return phrases or list(DEFAULT_WAKE_PHRASES)
 
 
 def _default_openai_voice() -> str:

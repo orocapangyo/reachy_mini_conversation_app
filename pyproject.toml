@@ -28,6 +28,8 @@ dependencies = [
     "google-auth-oauthlib>=1.4.0",
     "google-api-python-client>=2.198.0",
     "google-genai>=1.0.0",
+    #Local wake word ("리치미니")
+    "openwakeword>=0.6.0",
 ]
 
 [dependency-groups]
@@ -46,6 +48,15 @@ reachy-mini-conversation-app = "reachy_mini_conversation_app.main:main"
 
 [tool.uv]
 exclude-newer = "7 days"
+# openwakeword pulls tflite-runtime on Linux, which has no wheels past Python 3.11.
+# The bundled wake model is ONNX, so drop tflite-runtime everywhere.
+# reachy-mini pins onnxruntime==1.27.0, whose kernels break openwakeword feature
+# extraction (every wake model scores ~0; 1.26 and 1.28+ are fine). Drop once the SDK
+# moves past 1.27.0.
+override-dependencies = [
+    "tflite-runtime; sys_platform == 'never'",
+    "onnxruntime>=1.28",
+]
 
 [tool.uv.exclude-newer-package]
 "reachy-mini" = false

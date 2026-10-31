@@ -346,16 +346,51 @@ def run(
             go_to_sleep_lock.release()
 
     def go_to_sleep_action() -> dict[str, Any]:
-        """Route voice go_to_sleep to standby (wake-word wait) or the legacy app stop.
+        """Route voice go_to_sleep to local standby, OpenAI standby, or app stop.
 
-        Standby keeps the app and realtime session alive so a wake phrase can
-        resume the conversation; only handlers that support it (OpenAI backend)
-        and REACHY_MINI_STANDBY_ON_SLEEP=1 take that path.
+        Priority order:
+          1. Local standby: Gemini + acoustic wake listener active → sleep motion +
+             close Gemini session + start wake listener.  App keeps running.
+          2. OpenAI standby: REACHY_MINI_STANDBY_ON_SLEEP=1 + handler supports it.
+          3. Legacy: sleep motion + stop app.
         """
         active_handler = getattr(stream_manager, "handler", None) or handler
+
+        # Path 1 — local acoustic standby (Gemini back-end + wake listener).
+        wake_listener = getattr(stream_manager, "_wake_listener", None)
+        if wake_listener is not None and hasattr(active_handler, "request_local_standby"):
+            logger.info("go_to_sleep_action: local standby path (Gemini + wake listener).")
+            sleep_error: str | None = None
+            try:
+                # Stop the daemon-side head wobbler too (mirrors the legacy sleep
+                # path): a sleeping robot must not wobble, and leaving it running
+                # floods errors if the daemon connection drops during standby.
+                try:
+                    robot.disable_wobbling()
+                except Exception as exc:
+                    logger.debug("Error disabling wobbling before standby: %s", exc)
+                movement_manager.stop(reset_to_neutral=False)
+                robot.goto_sleep()
+            except Exception as exc:
+                sleep_error = f"{type(exc).__name__}: {exc}"
+                logger.warning("Sleep motion failed: %s", exc)
+            local_standby_result: dict[str, Any] = active_handler.request_local_standby()
+            try:
+                wake_listener.start()
+                logger.info("WakeWordListener started; robot waiting for wake phrase.")
+            except Exception as exc:
+                logger.warning("Failed to start wake listener: %s", exc)
+            result: dict[str, Any] = {"status": "local_standby", **local_standby_result}
+            if sleep_error is not None:
+                result["sleep_error"] = sleep_error
+            return result
+
+        # Path 2 — OpenAI session-alive standby.
         if config.REACHY_MINI_STANDBY_ON_SLEEP and hasattr(active_handler, "request_standby"):
-            standby_result: dict[str, Any] = active_handler.request_standby()
-            return standby_result
+            openai_result: dict[str, Any] = active_handler.request_standby()
+            return openai_result
+
+        # Path 3 — legacy: sleep motion + stop app.
         return go_to_sleep_and_stop_app()
 
     deps.go_to_sleep = go_to_sleep_action
