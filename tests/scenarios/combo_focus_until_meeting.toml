@@ -1,0 +1,8 @@
+id = "combo_focus_until_meeting"
+title = "다음 회의 전까지 집중 모드: 일정 조회 후 타이머 시작"
+group = "tool"
+
+[[steps]]
+say = "다음 회의 전까지 집중 모드 켜줘"
+tools = ["get_schedule", "pomodoro_timer"]
+wait_reply = false

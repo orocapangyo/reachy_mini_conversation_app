@@ -1,0 +1,13 @@
+id = "calendar_prep_tips"
+title = "일정 예약 시 준비 사항을 설명에 넣고, 물어보면 답한다"
+group = "calendar"
+pending = "일정 생성 도구(create_calendar_event)와 프로필 규칙 미구현"
+
+[[steps]]
+say = "내일 오후 3시에 면접 일정 잡아줘"
+tools = ["create_calendar_event"]
+args = { create_calendar_event = { summary = "면접", description = ["준비", "이력서", "포트폴리오", "자기소개"] } }
+
+[[steps]]
+say = "그 면접 뭘 준비하면 좋을까?"
+reply_any = ["이력서", "포트폴리오", "자기소개", "준비"]

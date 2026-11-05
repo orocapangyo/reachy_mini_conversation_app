@@ -1,0 +1,10 @@
+id = "calendar_early_morning"
+title = "이른 아침 일정도 조회된다 (시간대 회귀 확인)"
+group = "calendar"
+targets = ["sim"]
+pending = "get_events의 timeMin 시간대 오류 미수정. 실제 계정에 내일 오전 8시 일정을 만든 뒤 실행"
+
+[[steps]]
+say = "내일 오전 일정 알려줘"
+tools = ["get_schedule"]
+reply_any = ["오전", "여덟 시", "8시"]

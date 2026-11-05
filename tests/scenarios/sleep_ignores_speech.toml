@@ -1,0 +1,18 @@
+id = "sleep_ignores_speech"
+title = "수면 중에는 어떤 말에도 반응하지 않고 음성을 모델로 보내지 않는다"
+group = "sleep"
+
+[[steps]]
+say = "잘 자"
+tools = ["go_to_sleep"]
+state = "asleep"
+
+[[steps]]
+say = "지금 몇 시야?"
+silent = true
+state = "asleep"
+
+[[steps]]
+say = "노래 틀어줘"
+silent = true
+state = "asleep"

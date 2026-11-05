@@ -1,0 +1,31 @@
+id = "sleep_manual_cycle"
+title = "자러 가 → 침묵 → 호출어 기상 → 볼일 → 다시 수면"
+group = "sleep"
+
+[[steps]]
+say = "이제 자러 가"
+tools = ["go_to_sleep"]
+state = "asleep"
+observe = "고개를 숙이고 안테나를 눕혔는가?"
+
+[[steps]]
+say = "오늘 날씨 어때?"
+silent = true
+state = "asleep"
+
+[[steps]]
+action = "wake"
+state = "awake"
+observe = "기지개를 켜며 일어났는가?"
+
+[[steps]]
+say = "오늘 일정 알려줘"
+tools = ["get_schedule"]
+reply_any = ["회의", "일정"]
+state = "awake"
+
+[[steps]]
+say = "고마워, 이제 다시 자러 가"
+tools = ["go_to_sleep"]
+state = "asleep"
+observe = "다시 수면 자세로 돌아갔는가?"

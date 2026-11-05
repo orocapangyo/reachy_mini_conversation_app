@@ -1,0 +1,9 @@
+id = "tool_schedule_relative"
+title = "내일 일정 질문이 날짜 인자로 변환된다"
+group = "tool"
+
+[[steps]]
+say = "내일 회의 있어?"
+tools = ["get_schedule"]
+reply_any = ["회의"]
+args = { get_schedule = { target_date = ["tomorrow", "{tomorrow}"] } }

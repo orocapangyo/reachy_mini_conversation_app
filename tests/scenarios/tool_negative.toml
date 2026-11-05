@@ -1,0 +1,13 @@
+id = "tool_negative"
+title = "감사 인사나 방송 멘트에는 수면 도구를 부르지 않는다"
+group = "tool"
+
+[[steps]]
+say = "고마워, 수고했어"
+no_tools = ["go_to_sleep"]
+state = "awake"
+
+[[steps]]
+say = "시청해주셔서 감사합니다. 구독과 좋아요 부탁드려요."
+no_tools = ["go_to_sleep"]
+state = "awake"

@@ -1,0 +1,16 @@
+id = "calendar_create_then_query"
+title = "일정을 예약한 뒤 물어보면 그 일정을 답한다"
+group = "calendar"
+pending = "일정 생성 도구(create_calendar_event) 미구현"
+
+[[steps]]
+say = "내일 오후 3시에 치과 예약 잡아줘"
+tools = ["create_calendar_event"]
+args = { create_calendar_event = { summary = "치과" } }
+reply_any = ["치과"]
+
+[[steps]]
+say = "내일 일정 뭐 있어?"
+tools = ["get_schedule"]
+reply_any = ["치과"]
+reply_none = ["스크럼", "티타임"] # 인증 실패 시 나오는 가짜 기본 일정

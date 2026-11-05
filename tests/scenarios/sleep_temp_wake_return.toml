@@ -1,0 +1,19 @@
+id = "sleep_temp_wake_return"
+title = "수면 시간대에 깨운 뒤 볼일이 끝나면 다시 잠든다"
+group = "sleep"
+targets = ["sim"]
+pending = "수면 시간대 판단과 임시 기상 후 자동 복귀 미구현"
+
+[[steps]]
+action = "wake"
+state = "awake"
+
+[[steps]]
+say = "내일 일정만 알려줘"
+tools = ["get_schedule"]
+
+[[steps]]
+action = "wait"
+wait_s = 120.0
+state = "asleep"
+observe = "무활동 후 스스로 수면으로 돌아갔는가?"
