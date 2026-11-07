@@ -1,0 +1,11 @@
+id = "sleep_scheduled"
+title = "지정한 시각이 되면 스스로 수면에 들어간다"
+group = "sleep"
+targets = ["sim"]
+pending = "예약 수면 스케줄러 미구현. 구현 후 1분 뒤 시각으로 설정하고 실행"
+
+[[steps]]
+action = "wait"
+wait_s = 70.0
+state = "asleep"
+observe = "지정 시각에 수면 자세로 들어갔는가?"

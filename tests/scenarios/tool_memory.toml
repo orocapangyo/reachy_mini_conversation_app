@@ -1,0 +1,19 @@
+id = "tool_memory"
+title = "기억, 회상, 삭제"
+group = "tool"
+
+[[steps]]
+say = "내 강아지 이름은 모찌야. 기억해줘"
+tools = ["remember"]
+reply_any = ["모찌", "기억"]
+args = { remember = { fact = ["모찌", "Mochi"] } }
+
+[[steps]]
+say = "내 강아지 이름이 뭐였지?"
+no_tools = ["forget"]
+reply_any = ["모찌"]
+
+[[steps]]
+say = "강아지 이름은 이제 잊어줘"
+tools = ["forget"]
+reply_any = ["잊", "삭제", "지웠"]

@@ -1,0 +1,9 @@
+id = "tool_parallel"
+title = "시간과 날씨를 한 번에 물으면 두 도구를 모두 부른다"
+group = "tool"
+# live/sim에서 시간은 프롬프트의 현재 일시로 답할 수도 있어 통과율을 함께 본다.
+
+[[steps]]
+say = "지금 몇 시고 서울 날씨는 어때? 도구로 확인해서 알려줘"
+tools = ["pollen_robotics_reachy_mini_time_tool__get_time", "pollen_robotics_reachy_mini_weather_tool__get_weather"]
+reply_any = ["맑", "도"]

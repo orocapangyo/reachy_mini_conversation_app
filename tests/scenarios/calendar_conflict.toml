@@ -1,0 +1,9 @@
+id = "calendar_conflict"
+title = "겹치는 시간에 예약하면 충돌을 알린다"
+group = "calendar"
+targets = ["live", "sim"]
+pending = "일정 생성 도구(create_calendar_event)와 충돌 확인 규칙 미구현"
+
+[[steps]]
+say = "오늘 오후 2시에 치과 예약 잡아줘"
+reply_any = ["겹", "이미", "팀 회의"]

@@ -1,0 +1,17 @@
+id = "barge_during_tool"
+title = "도구 실행 중 끼어들어도 세션이 유지되고 새 도구 결과가 돌아온다"
+group = "barge"
+targets = ["offline", "live"]
+known_bug = "다른 도구가 실행 중이면 새 도구 결과를 보내지 않아 답변이 멈춤 (gemini_realtime.py _handle_tool_result의 _in_flight_tool_calls 묶음 대기)"
+
+[[steps]]
+say = "오늘 일정 알려줘"
+slow_tools = ["get_schedule"]
+tools = ["get_schedule"]
+wait_reply = false
+
+[[steps]]
+say = "아니 됐고, 서울 날씨 알려줘"
+tools = ["pollen_robotics_reachy_mini_weather_tool__get_weather"]
+reply_any = ["맑", "날씨"]
+state = "awake"

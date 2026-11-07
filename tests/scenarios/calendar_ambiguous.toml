@@ -1,0 +1,10 @@
+id = "calendar_ambiguous"
+title = "시간이 모호하면 만들지 않고 되묻는다"
+group = "calendar"
+targets = ["live", "sim"]
+pending = "일정 생성 도구(create_calendar_event) 미구현"
+
+[[steps]]
+say = "다음 주에 치과 잡아줘"
+no_tools = ["create_calendar_event"]
+reply_any = ["언제", "몇 시", "요일", "시간"]

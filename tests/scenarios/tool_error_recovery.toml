@@ -1,0 +1,18 @@
+id = "tool_error_recovery"
+title = "도구가 실패해도 세션이 유지되고 다음 턴이 정상 동작한다"
+group = "tool"
+targets = ["offline", "live"]
+
+[[steps]]
+say = "오늘 일정 알려줘"
+fail_tools = ["get_schedule"]
+tools = ["get_schedule"]
+state = "awake"
+
+[steps.mock]
+reply = "일정을 가져오지 못했어요."
+
+[[steps]]
+say = "그럼 왼쪽 좀 봐줘"
+tools = ["move_head"]
+state = "awake"

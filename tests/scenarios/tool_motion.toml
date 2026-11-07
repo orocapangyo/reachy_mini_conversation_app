@@ -1,0 +1,14 @@
+id = "tool_motion"
+title = "모션 요청이 모션 도구로 연결된다"
+group = "tool"
+
+[[steps]]
+say = "왼쪽 좀 봐줘"
+tools = ["move_head"]
+args = { move_head = { direction = "left" } }
+observe = "머리가 왼쪽으로 돌아갔는가?"
+
+[[steps]]
+say = "기쁜 표정 지어줘"
+tools = ["play_emotion"]
+observe = "기쁜 감정 모션이 재생됐는가?"

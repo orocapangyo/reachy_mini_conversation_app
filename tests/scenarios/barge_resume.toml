@@ -1,0 +1,15 @@
+id = "barge_resume"
+title = "B에 답한 뒤 끊겼던 A 설명을 이어간다"
+group = "barge"
+targets = ["live", "sim"]
+pending = "끼어들기 재개 미구현 (--include-pending으로 현재 동작 측정)"
+
+[[steps]]
+say = "광합성의 원리를 단계별로 아주 자세하게 설명해줘"
+interrupt_after_s = 1.5
+
+[[steps]]
+say = "잠깐, 블랙홀이 뭔지 먼저 간단히 알려줘"
+interrupted = true
+reply_any = ["블랙홀"]
+reply_later_any = ["광합성"]

@@ -478,6 +478,7 @@ class GeminiRealtimeHandler(ConversationHandler):
                     is_idle_tool_call=False,
                 )
                 await self.output_queue.put(AdditionalOutputs({"role": "tool_use", "content": f"Used tool {fc.name}"}))
+                self._mark_activity(f"tool_started:{fc.name}")
             self._mark_activity("tool_call_received")
 
     async def _send_startup_greeting_prompt(self) -> None:

@@ -1,0 +1,10 @@
+id = "tool_schedule_today"
+title = "오늘 일정을 물으면 get_schedule을 부른다"
+group = "tool"
+
+[[steps]]
+say = "오늘 일정 알려줘"
+tools = ["get_schedule"]
+no_tools = ["go_to_sleep"]
+reply_any = ["회의", "일정"]
+args = { get_schedule = { target_date = ["today", "{today}"] } }

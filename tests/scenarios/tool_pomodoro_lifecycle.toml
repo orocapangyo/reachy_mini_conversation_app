@@ -1,0 +1,27 @@
+id = "tool_pomodoro_lifecycle"
+title = "집중 타이머 시작, 남은 시간 확인, 중단"
+group = "tool"
+known_bug = "다른 도구가 실행 중이면 새 도구 결과를 보내지 않아 답변이 멈춤 (gemini_realtime.py _handle_tool_result의 _in_flight_tool_calls 묶음 대기)"
+
+[[steps]]
+say = "25분 집중 모드 시작해줘"
+tools = ["pomodoro_timer"]
+wait_reply = false
+args = { pomodoro_timer = { phase = "focus" } }
+
+[[steps]]
+say = "남은 시간 얼마나 됐어?"
+tools = ["task_status"]
+reply_any = ["분", "남"]
+
+[steps.mock]
+reply = "24분 남았어요."
+
+[[steps]]
+say = "타이머 그만해줘"
+tools = ["task_status", "task_cancel"]
+reply_any = ["중단", "멈", "그만", "취소", "종료"]
+
+[steps.mock]
+reply = "타이머를 중단했어요."
+calls = [{ name = "task_status" }, { name = "task_cancel", args = { tool_id = "pomodoro_timer" } }]
