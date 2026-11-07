@@ -2,9 +2,9 @@
 # Reachy Mini - MuJoCo 3D Simulation & Conversation App Launcher (macOS / Linux)
 #
 # run_sim_mujoco.ps1 의 macOS/Linux 대응판.
-#   ./personal/run_sim_mujoco.sh                 # MuJoCo 3D 창 + 웹 UI
-#   REACHY_SIM_HEADLESS=1 ./personal/run_sim_mujoco.sh   # 3D 창 없이 실행
-#   ./personal/run_sim_mujoco.sh --no-camera --debug     # 추가 인자는 앱으로 전달
+#   ./run_sim_mujoco.sh                 # MuJoCo 3D 창 + 웹 UI
+#   REACHY_SIM_HEADLESS=1 ./run_sim_mujoco.sh   # 3D 창 없이 실행
+#   ./run_sim_mujoco.sh --no-camera --debug     # 추가 인자는 앱으로 전달
 set -euo pipefail
 
 # --- tuning constants ---------------------------------------------------------
@@ -13,11 +13,11 @@ UI_PORT=7860
 DAEMON_WAIT_MAX_S=60
 PROFILE="desk_companion_ko"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 VENV_BIN="$REPO_ROOT/.venv/bin"
-DAEMON_LOG="$REPO_ROOT/personal/.sim-daemon.log"
+DAEMON_LOG="$REPO_ROOT/.sim-daemon.log"
 DAEMON_HEALTH_URL="http://127.0.0.1:${DAEMON_PORT}/api/state/full"
 UI_URL="http://localhost:${UI_PORT}/#/"
 HEADLESS="${REACHY_SIM_HEADLESS:-0}"
