@@ -1,0 +1,23 @@
+{
+  "profile": {
+    "info_cache": {
+      "Default": {
+        "name": "개인",
+        "user_name": "me@example.com",
+        "is_using_default_name": false
+      },
+      "Profile 1": {
+        "name": "회사",
+        "user_name": "me@company.example",
+        "is_using_default_name": false
+      },
+      "Profile 2": {
+        "name": "친구",
+        "user_name": "friend@example.com",
+        "is_using_default_name": false
+      }
+    },
+    "last_used": "Default",
+    "last_active_profiles": ["Default", "Profile 1"]
+  }
+}

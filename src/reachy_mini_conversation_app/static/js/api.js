@@ -2,6 +2,8 @@
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const TOOL_SPACE_TIMEOUT_MS = 60000;
+// First Bookmark Insight sync can touch hundreds of files (plus Windows write retries).
+export const BOOKMARK_INSIGHT_LONG_TIMEOUT_MS = 180000;
 
 const RPC_URL = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/rpc`;
 
@@ -155,6 +157,17 @@ export const saveProfileTools = (profile, enabledTools) =>
   rpcCall("profile_tools.save", { profile, enabled_tools: enabledTools });
 export const resetProfileTools = (profile) =>
   rpcCall("profile_tools.reset", { profile });
+
+// Bookmark Insight first-time setup (bookmark_insight.* methods, M10).
+export const getBookmarkInsightStatus = () => rpcCall("bookmark_insight.status");
+export const discoverBookmarkInsightProfiles = (params = {}) => rpcCall("bookmark_insight.discover", params);
+export const runBookmarkInsightSync = (params = {}) =>
+  rpcCall("bookmark_insight.sync", params, { timeoutMs: BOOKMARK_INSIGHT_LONG_TIMEOUT_MS });
+export const setBookmarkInsightRepo = (path, create = false) =>
+  rpcCall("bookmark_insight.repo.set", { path, create });
+export const applyBookmarkInsightEnv = (values) => rpcCall("bookmark_insight.env.apply", values);
+export const setupBookmarkInsightDemo = (target) =>
+  rpcCall("bookmark_insight.demo_setup", { target }, { timeoutMs: BOOKMARK_INSIGHT_LONG_TIMEOUT_MS });
 
 export const getVisionSettings = async () => {
   const res = await fetch("/api/vision/settings");

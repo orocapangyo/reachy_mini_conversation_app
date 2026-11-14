@@ -1,0 +1,52 @@
+{
+  "checksum": "fixture",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "date_added": "13438138360000000",
+          "date_last_used": "0",
+          "guid": "b2c3d4e5-0001-4000-8000-000000000011",
+          "id": "7",
+          "name": "WebRTC 재접속 처리 패턴",
+          "type": "url",
+          "url": "https://example.com/webrtc/reconnect"
+        },
+        {
+          "date_added": "13438243800000000",
+          "date_last_used": "0",
+          "guid": "b2c3d4e5-0002-4000-8000-000000000012",
+          "id": "8",
+          "name": "사내 위키: 배포 절차",
+          "type": "url",
+          "url": "http://192.168.10.5/wiki/deploy"
+        }
+      ],
+      "date_added": "13386385200000000",
+      "date_modified": "13438243800000000",
+      "guid": "0bc5d013-4b3a-4a5c-9a4a-000000000011",
+      "id": "1",
+      "name": "북마크바",
+      "type": "folder"
+    },
+    "other": {
+      "children": [],
+      "date_added": "13386385200000000",
+      "date_modified": "0",
+      "guid": "82b081ec-3dd3-4e5a-8d1b-000000000012",
+      "id": "2",
+      "name": "기타 북마크",
+      "type": "folder"
+    },
+    "synced": {
+      "children": [],
+      "date_added": "13386385200000000",
+      "date_modified": "0",
+      "guid": "4cf2e351-0000-4000-8000-000000000013",
+      "id": "3",
+      "name": "모바일 북마크",
+      "type": "folder"
+    }
+  },
+  "version": 1
+}

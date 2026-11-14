@@ -1,0 +1,25 @@
+{
+  "summaries": {
+    "https://example.com/webrtc/reconnect": "WebRTC 연결이 끊겼을 때 ICE restart와 세션 재협상을 어떻게 설계하는지 다룬다. 네트워크 전환과 앱 백그라운드 복귀를 구분해 처리한다.",
+    "https://example.com/webrtc/ice-restart": "모바일에서 앱이 백그라운드로 갔다 돌아오면 ICE 후보가 무효화되는 문제를 다룬다. 복귀 시 ICE restart, 실패 시 전체 재협상의 2단계 전략을 제안한다.",
+    "https://example.com/css/grid-cheatsheet": "CSS Grid의 주요 속성과 레이아웃 패턴을 한 장에 정리한 치트시트."
+  },
+  "clusters": {
+    "clusters": [
+      {
+        "topic": "WebRTC 재접속",
+        "bookmark_ids": ["7f3a9c2e-5b1d-4e8a-9c3f-2d7e6a1b4c05", "a1b2c3d4-0001-4000-8000-000000000001"],
+        "summary": "연결이 끊겼을 때 ICE restart와 재협상으로 복구하는 패턴 두 편.",
+        "correlation": "한 글은 네트워크 전환, 다른 글은 모바일 백그라운드 복귀를 다루는데 둘 다 ICE restart를 1차 수단으로 삼는다.",
+        "question": "아바타 통화에서 끊김이 생기는 건 네트워크 전환 쪽이야, 백그라운드 복귀 쪽이야?"
+      },
+      {
+        "topic": "Rust 비동기",
+        "bookmark_ids": ["a1b2c3d4-0002-4000-8000-000000000002"],
+        "summary": "Rust async/await 입문 1부 (본문 미확보, 제목 기준).",
+        "correlation": "본문을 못 가져와 제목만 보고 묶었다. WebRTC 묶음과 직접 연결은 없다.",
+        "question": "Rust 비동기는 호기심이야, 아니면 지금 프로젝트에 쓸 계획이 있어?"
+      }
+    ]
+  }
+}

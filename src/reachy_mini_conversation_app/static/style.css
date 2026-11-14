@@ -2618,3 +2618,120 @@ button {
   }
 }
 
+
+/* --- Bookmark Insight setup panel (Settings → Bookmark Insight) --------------------------- */
+
+.bookmark-insight-inline {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.bookmark-insight-inline .settings-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bookmark-insight-inline .btn {
+  flex: none;
+}
+
+.bookmark-insight-actions {
+  flex-wrap: wrap;
+}
+
+.bookmark-insight-details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.bookmark-insight-details[open] summary {
+  margin-bottom: 8px;
+}
+
+.bookmark-insight-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.bookmark-insight-table th,
+.bookmark-insight-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bookmark-insight-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bookmark-insight-table td.is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bookmark-insight-table tr.is-unusable {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.bookmark-insight-check {
+  accent-color: var(--accent);
+}
+
+.bookmark-insight-pill {
+  margin-left: 8px;
+}
+
+.bookmark-insight-warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: var(--warn);
+}
+
+.bookmark-insight-env {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.settings-hint.is-error {
+  color: var(--danger);
+}
+
+.bookmark-insight-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: bookmark-insight-spin 0.8s linear infinite;
+}
+
+@keyframes bookmark-insight-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 620px) {
+  .bookmark-insight-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

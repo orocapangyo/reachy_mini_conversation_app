@@ -41,6 +41,38 @@ uv sync --group dev
 uv pip install mujoco  # 또는 pip install reachy_mini[mujoco]
 ```
 
+### 1.3 macOS 전용 준비사항
+
+macOS에서는 아래 세 가지를 추가로 확인해야 합니다.
+
+**(a) MuJoCo 3D 뷰어는 `mjpython`으로만 뜹니다.**
+시뮬 백엔드가 `mujoco.viewer.launch_passive()`를 사용하는데, MuJoCo는 macOS에서 GUI를
+메인 스레드에서만 띄울 수 있어 `mjpython` 런처가 아니면 `RuntimeError`를 발생시킵니다.
+
+**(b) `mjpython`은 uv 관리형 Python의 `libpython`을 찾지 못합니다.**
+그냥 실행하면 `Library not loaded: @rpath/libpython3.12.dylib`로 종료됩니다.
+해당 Python의 `LIBDIR`을 dyld 검색 경로에 넣어주면 해결됩니다:
+
+```bash
+# 시뮬 데몬 (3D 창 포함) — macOS
+DYLD_FALLBACK_LIBRARY_PATH="$(.venv/bin/python -c 'import sysconfig;print(sysconfig.get_config_var("LIBDIR"))')" \
+  .venv/bin/mjpython .venv/bin/reachy-mini-daemon --sim
+```
+
+3D 창이 필요 없다면 `mjpython` 없이 평범하게 실행할 수 있습니다:
+
+```bash
+reachy-mini-daemon --sim --headless   # MuJoCo 물리는 돌지만 창은 없음
+reachy-mini-daemon --mockup-sim       # MuJoCo 자체가 필요 없는 목업 모드
+```
+
+**(c) 마이크·카메라 권한**
+*시스템 설정 → 개인정보 보호 및 보안 → 마이크 / 카메라*에서 사용 중인 터미널 앱
+(Terminal, iTerm2, VS Code 등)을 허용해야 합니다. 허용하지 않으면 GStreamer가 빈
+프레임만 읽어 음성 대화가 시작되지 않습니다.
+
+오디오 입출력 자체는 macOS 정식 지원 경로입니다 (`osxaudiosrc` / `osxaudiosink`).
+
 ---
 
 ## 2. 1단계: 시뮬레이션 데몬 (reachy-mini-daemon) 실행
@@ -55,6 +87,8 @@ reachy-mini-daemon --sim
 ```
 
 - 실행 시 3D **MuJoCo 시뮬레이터 창**이 팝업되며, 로봇 가상 모델이 화면에 나타납니다.
+- **macOS는 이 명령만으로 3D 창이 뜨지 않습니다.** `mjpython`을 경유해야 하며, 자세한 명령은
+  [1.3 macOS 전용 준비사항](#13-macos-전용-준비사항)을 따르세요.
 
 ### 2.2 로봇 이름 지정 시 (개발/다중 로봇 환경)
 다중 로봇 또는 특정 인스턴스 지정을 위해 로봇 이름을 지정하는 경우:
@@ -119,6 +153,7 @@ reachy-mini-conversation-app --ui
 | **웹 UI + 디버그 로그** | `reachy-mini-conversation-app --ui --debug` |
 | **카메라 미사용 시 (오류 방지)** | `reachy-mini-conversation-app --ui --no-camera` |
 | **특정 시뮬레이션 로봇 연결** | `reachy-mini-conversation-app --ui --robot-name my-sim-robot` |
+| **Windows 한 줄 실행 (데몬+앱+UI)** | `.\run_sim_mujoco.ps1` |
 
 ---
 
@@ -172,3 +207,12 @@ mypy --pretty --show-error-codes
 # 자동화 테스트 실행
 pytest tests/ -v
 ```
+
+### Q5. macOS에서 데몬이 바로 죽는 경우
+
+| 에러 메시지 | 원인 / 해결 |
+| :--- | :--- |
+| `` `launch_passive` requires that the Python script be run under `mjpython` on macOS `` | 3D 뷰어를 쓰려면 데몬을 `mjpython`으로 실행해야 합니다. [1.3절](#13-macos-전용-준비사항) 참고. 창이 필요 없으면 `--headless`를 붙이세요. |
+| `Library not loaded: @rpath/libpython3.12.dylib` | `mjpython`이 uv 관리형 Python을 dlopen하지 못한 경우입니다. `DYLD_FALLBACK_LIBRARY_PATH`에 해당 Python의 `LIBDIR`을 지정하세요 ([1.3절](#13-macos-전용-준비사항)). |
+
+데몬을 `--headless`로 띄우면 두 에러 모두 발생하지 않습니다 (3D 창만 포기).

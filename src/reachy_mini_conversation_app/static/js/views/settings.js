@@ -15,6 +15,7 @@ import {
   untilReady,
 } from "../api.js";
 import { h } from "../ui.js";
+import { buildBookmarkInsightSection } from "../components/bookmark-insight.js";
 
 const HF_CONNECTION_MODES = Object.freeze({
   DEPLOYED: "deployed",
@@ -37,10 +38,12 @@ export async function mountSettingsView({ outlet, signal }) {
         refreshVoices({ voiceSection, signal }),
         refreshVision({ visionSection, signal }),
         refreshCalendar({ calendarSection, signal }),
+        bookmarkInsightSection.refresh(),
       ]),
   });
   const visionSection = buildVisionSection();
   const calendarSection = buildCalendarSection();
+  const bookmarkInsightSection = buildBookmarkInsightSection({ signal });
   const voiceSection = buildVoiceSection();
   const statusSection = buildStatusSection();
 
@@ -56,6 +59,7 @@ export async function mountSettingsView({ outlet, signal }) {
     connectionSection.element,
     visionSection.element,
     calendarSection.element,
+    bookmarkInsightSection.element,
     voiceSection.element,
     statusSection.element
   );
@@ -66,6 +70,7 @@ export async function mountSettingsView({ outlet, signal }) {
     refreshVoices({ voiceSection, signal }),
     refreshVision({ visionSection, signal }),
     refreshCalendar({ calendarSection, signal }),
+    bookmarkInsightSection.refresh(),
   ]);
 }
 

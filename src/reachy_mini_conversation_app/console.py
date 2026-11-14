@@ -13,6 +13,7 @@ from pathlib import Path
 from collections.abc import Callable, AsyncIterator
 
 import numpy as np
+from dotenv import find_dotenv
 
 from reachy_mini import ReachyMini
 from reachy_mini.io.jsonrpc import JsonRpcError
@@ -20,6 +21,7 @@ from reachy_mini.apps.jsonrpc_server import JsonRpcServer
 from reachy_mini.media.media_manager import MediaBackend
 from reachy_mini_conversation_app.config import (
     HF_BACKEND,
+    GEMINI_BACKEND,
     LOCKED_PROFILE,
     HF_REALTIME_WS_URL_ENV,
     CONVERSATION_BACKEND_ENV,
@@ -35,6 +37,7 @@ from reachy_mini_conversation_app.config import (
     build_hf_direct_ws_url,
     has_hf_realtime_target,
     parse_hf_direct_target,
+    get_conversation_backend,
     get_hf_connection_selection,
     refresh_runtime_config_from_env,
 )
@@ -52,6 +55,11 @@ from reachy_mini_conversation_app.personality_routes import (
 from reachy_mini_conversation_app.profile_tool_routes import register_profile_tool_methods
 from reachy_mini_conversation_app.audio.startup_config import apply_audio_startup_config
 from reachy_mini_conversation_app.conversation_handler import ConversationHandler
+from reachy_mini_conversation_app.audio.playback_pipeline import pin_playback_mixer_caps
+from reachy_mini_conversation_app.bookmark_insight_routes import (
+    build_bookmark_insight_ops,
+    register_bookmark_insight_methods,
+)
 
 
 try:
@@ -146,6 +154,15 @@ class LocalStream:
         # Per-role throttle timestamps for conversation.level (orb audio meter).
         self._last_level_emit: dict[str, float] = {}
         self._audio_service = AudioDeviceService.get_instance()
+        # Local acoustic wake-word listener.  None when disabled or engine fails to load.
+        # The listener's asyncio loop is wired in run() after the event loop starts.
+        self._wake_listener: Any = self._try_create_wake_listener()
+        # App-side activity observers (Bookmark Insight heartbeat etc.). Kept here, not on the
+        # handler, so they survive handler rebuilds.
+        self._extra_activity_observers: list[Callable[[str], None]] = []
+        # Same for transcript observers (Bookmark Insight conversation log): the handler has a
+        # single slot, so LocalStream fans (role, text, final) out from it.
+        self._extra_transcript_observers: list[Callable[[str, str, bool], None]] = []
         self._install_handler(handler)
 
     def _install_handler(self, handler: ConversationHandler) -> None:
@@ -163,13 +180,95 @@ class LocalStream:
         if callable(transcript_setter):
             transcript_setter(self._dispatch_transcript)
 
+    def add_transcript_observer(self, observer: Callable[[str, str, bool], None]) -> None:
+        """Register an app-side transcript observer, called (role, text, final) after the RPC push."""
+        self._extra_transcript_observers.append(observer)
+
     def _dispatch_transcript(self, role: str, text: str, final: bool) -> None:
-        """Push a conversation.transcript notification to JSON-RPC clients."""
+        """Fan one transcript chunk out to JSON-RPC clients and app-side observers."""
         if self._rpc is not None:
             self._rpc.broadcast_threadsafe(
                 "conversation.transcript",
                 {"role": role, "text": text, "final": final},
             )
+        for observer in list(self._extra_transcript_observers):
+            try:
+                observer(role, text, final)
+            except Exception:
+                logger.debug("transcript observer raised (ignored)", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Wake-word listener helpers
+    # ------------------------------------------------------------------
+
+    def _try_create_wake_listener(self) -> Any:
+        """Create and return a WakeWordListener if wake-word is enabled, else None."""
+        if not config.REACHY_MINI_WAKE_WORD_ENABLED:
+            return None
+        try:
+            from reachy_mini_conversation_app.audio.wake_word import WakeWordListener  # noqa: PLC0415
+            from reachy_mini_conversation_app.audio.wake_engines import create_wake_engine  # noqa: PLC0415
+        except ImportError:
+            logger.warning("Wake-word modules not importable; local wake disabled.")
+            return None
+
+        # Lazy engine: defer the onnxruntime model load to the first sleep.  Loading
+        # it eagerly here raced GStreamer/MuJoCo native init at startup and caused
+        # intermittent segfaults near the first audio playback.
+        engine_name = config.REACHY_MINI_WAKE_ENGINE
+
+        def _build_engine() -> Any:
+            engine = create_wake_engine(engine_name)
+            if engine is None:
+                logger.warning("Wake engine %r failed to load; wake-word detection disabled.", engine_name)
+            return engine
+
+        # loop is None here; wired to the asyncio event loop in run() before recording starts.
+        listener = WakeWordListener(on_wake=self._on_wake_detected, engine_factory=_build_engine)
+        logger.info("WakeWordListener created (engine=%r, lazy load).", engine_name)
+        return listener
+
+    def _on_wake_detected(self, phrase: str) -> None:
+        """Handle a detected wake phrase.
+
+        Dispatched via asyncio event loop (call_soon_threadsafe when listener has
+        a loop, or directly from the worker thread otherwise).  Stops the listener,
+        runs the wake-up motion, then exits local standby on the handler.
+        """
+        logger.info("Wake phrase %r detected — starting wake-up sequence.", phrase)
+        if self._wake_listener is not None:
+            self._wake_listener.stop()
+
+        async def _do_wakeup() -> None:
+            try:
+                # Restart the movement manager first — go_to_sleep stopped it, so
+                # without this the wake-up motion is driven into a dead manager
+                # and the robot stays frozen in the sleep pose while still talking.
+                deps = getattr(self.handler, "deps", None)
+                mm = getattr(deps, "movement_manager", None) if deps is not None else None
+                if mm is not None:
+                    mm.start()
+                await asyncio.to_thread(self._robot.enable_motors)
+                await asyncio.to_thread(self._robot.wake_up)
+                # Re-enable the audio-reactive head wobbler disabled at sleep.
+                try:
+                    await asyncio.to_thread(self._robot.enable_wobbling)
+                except Exception as exc:
+                    logger.debug("Error re-enabling wobbling on wake: %s", exc)
+            except Exception as exc:
+                logger.warning("Wake-up motion failed (continuing): %s", exc)
+            active_handler = getattr(self, "handler", None)
+            if active_handler is not None and hasattr(active_handler, "exit_local_standby"):
+                result = await active_handler.exit_local_standby()
+                logger.info("exit_local_standby result: %s", result)
+            else:
+                logger.warning("_on_wake_detected: handler has no exit_local_standby; standby persists.")
+
+        loop = self._asyncio_loop
+        if loop is not None and loop.is_running():
+            asyncio.create_task(_do_wakeup(), name="wake-up-sequence")
+        else:
+            logger.warning("_on_wake_detected called but no running event loop; skipping wakeup.")
 
     # Audio level meter for the client orb. RMS is scaled into a visible 0..1
     # range and capped to ~15 Hz so it stays light on the DataChannel.
@@ -211,8 +310,12 @@ class LocalStream:
         "assistant_transcript_done": "ready",
     }
 
+    def add_activity_observer(self, observer: Callable[[str], None]) -> None:
+        """Register an app-side activity observer, called with the reason after the RPC fan-out."""
+        self._extra_activity_observers.append(observer)
+
     def _dispatch_activity(self, reason: str) -> None:
-        """Fan one activity reason out to JSON-RPC clients."""
+        """Fan one activity reason out to JSON-RPC clients and app-side observers."""
         if self._rpc is not None:
             # Raw reason (the browser orb maps it exactly like the old SSE feed)...
             self._rpc.broadcast_threadsafe("conversation.activity", {"reason": reason})
@@ -221,6 +324,11 @@ class LocalStream:
             if state and state != self._last_turn_state:
                 self._last_turn_state = state
                 self._rpc.broadcast_threadsafe("conversation.turn", {"state": state})
+        for observer in list(self._extra_activity_observers):
+            try:
+                observer(reason)
+            except Exception:
+                logger.debug("activity observer raised (ignored)", exc_info=True)
 
     def _emit_phase(self, phase: str, reason: Optional[str] = None) -> None:
         """Push a conversation.phase notification to JSON-RPC clients."""
@@ -347,8 +455,16 @@ class LocalStream:
             "backend_error": None if connected else self._backend_error,
         }
 
+    def _env_file_path(self) -> Path | None:
+        """Return the `.env` the settings UI persists to: the instance's, else the one loaded from the cwd."""
+        if self._instance_path:
+            return Path(self._instance_path) / ".env"
+        if os.environ.get("REACHY_MINI_SKIP_DOTENV"):
+            return None
+        return Path(find_dotenv(usecwd=True) or Path.cwd() / ".env")
+
     def _persist_env_values(self, updates: dict[str, str]) -> None:
-        """Persist non-empty environment values in memory and in the instance `.env`."""
+        """Persist non-empty environment values in memory and in the `.env` from `_env_file_path`."""
         normalized_updates = {name: (value or "").strip() for name, value in updates.items()}
         normalized_updates = {name: value for name, value in normalized_updates.items() if value}
         if not normalized_updates:
@@ -361,11 +477,10 @@ class LocalStream:
                 pass
         refresh_runtime_config_from_env()
 
-        if not self._instance_path:
+        env_path = self._env_file_path()
+        if env_path is None:
             return
         try:
-            inst = Path(self._instance_path)
-            env_path = inst / ".env"
             lines = self._read_env_lines(env_path)
             for env_name, value in normalized_updates.items():
                 replaced = False
@@ -391,13 +506,13 @@ class LocalStream:
             logger.warning("Failed to persist %s: %s", ", ".join(sorted(normalized_updates)), e)
 
     def _remove_persisted_env_values(self, env_names: tuple[str, ...]) -> None:
-        """Remove keys from the instance `.env` without mutating the current runtime."""
+        """Remove keys from the `.env` from `_env_file_path` without mutating the current runtime."""
         normalized_names = tuple(sorted({name.strip() for name in env_names if name and name.strip()}))
-        if not normalized_names or not self._instance_path:
+        if not normalized_names:
             return
 
-        env_path = Path(self._instance_path) / ".env"
-        if not env_path.exists():
+        env_path = self._env_file_path()
+        if env_path is None or not env_path.exists():
             return
 
         try:
@@ -559,13 +674,23 @@ class LocalStream:
             hf_direct_host, hf_direct_port = parse_hf_direct_target(hf_ws_url)
             hf_connection_selection = get_hf_connection_selection()
             is_openai = config.CONVERSATION_BACKEND == "openai"
+            is_gemini = config.CONVERSATION_BACKEND == GEMINI_BACKEND
             has_openai_key = bool((config.OPENAI_API_KEY or "").strip())
+            has_gemini_key = bool((getattr(config, "GEMINI_API_KEY", None) or "").strip())
             has_hf_connection = hf_connection_selection.has_target
             backend_connection = self._backend_connection_status()
-            can_proceed = has_openai_key if is_openai else has_hf_connection
+            if is_openai:
+                can_proceed = has_openai_key
+                has_key = has_openai_key
+            elif is_gemini:
+                can_proceed = has_gemini_key
+                has_key = has_gemini_key
+            else:
+                can_proceed = has_hf_connection
+                has_key = has_hf_connection
             return {
                 "backend": config.CONVERSATION_BACKEND,
-                "has_key": has_openai_key if is_openai else has_hf_connection,
+                "has_key": has_key,
                 "has_hf_session_url": bool(hf_session_url),
                 "has_hf_ws_url": bool(hf_ws_url),
                 "has_hf_connection": has_hf_connection,
@@ -917,6 +1042,14 @@ class LocalStream:
         except Exception:
             logger.exception("Failed to register profile tool methods; personality tool settings will be unavailable")
 
+        try:
+            # bookmark_insight.* — first-time Bookmark Insight setup from the settings UI (M10); .env writes reuse _persist_env_values.
+            register_bookmark_insight_methods(rpc, build_bookmark_insight_ops(persist_env=self._persist_env_values))
+        except Exception:
+            logger.exception(
+                "Failed to register Bookmark Insight methods; the Bookmark Insight setup panel will be unavailable"
+            )
+
         self._settings_initialized = True
 
     async def _run_handler_startup_loop(self) -> None:
@@ -943,7 +1076,7 @@ class LocalStream:
                     await self._sleep_or_restart_requested(self._backend_retry_delay)
                     continue
 
-            if not has_hf_realtime_target():
+            if get_conversation_backend() == HF_BACKEND and not has_hf_realtime_target():
                 self._set_backend_connection_state(
                     "waiting_for_config", f"{HF_REALTIME_WS_URL_ENV} is not configured."
                 )
@@ -969,6 +1102,15 @@ class LocalStream:
                 self._set_backend_connection_state("disconnected")
                 if self._restart_requested.is_set():
                     logger.info("Backend stopped for requested restart.")
+                    continue
+                # Local wake-word standby: the session was intentionally closed to
+                # wait for a wake phrase.  Do NOT auto-reconnect — poll until the
+                # wake-up sequence clears the flag, then loop back to start_up()
+                # immediately (skipping the retry sleep) for a prompt wake.
+                if getattr(self.handler, "_local_standby", False):
+                    logger.info("Backend in local standby; awaiting wake phrase (no auto-reconnect).")
+                    while getattr(self.handler, "_local_standby", False) and not self._stop_event.is_set():
+                        await asyncio.sleep(0.2)
                     continue
                 logger.info(
                     "Backend session ended. Settings UI remains available; retrying in %.1f seconds.",
@@ -1024,13 +1166,18 @@ class LocalStream:
             self._set_backend_connection_state("not_started")
 
         # Start media after key is set/available
+        pin_playback_mixer_caps(self._robot, logger=logger)
         self._robot.media.start_recording()
         self._robot.media.start_playing()
 
         async def runner() -> None:
-            # Capture loop for cross-thread personality actions
+            # Capture loop for cross-thread personality actions and wake-word dispatch.
             loop = asyncio.get_running_loop()
             self._asyncio_loop = loop  # type: ignore[assignment]
+            # Wire the wake listener to this loop before record_loop starts so that
+            # on_wake is dispatched via call_soon_threadsafe (thread-safe path).
+            if self._wake_listener is not None:
+                self._wake_listener._loop = loop
             # Connect the backend first so it overlaps the warmup and audio config below.
             handler_task = asyncio.create_task(self._run_handler_startup_loop(), name="realtime-handler")
             self._tasks = [handler_task]
@@ -1129,13 +1276,18 @@ class LocalStream:
             audio_frame = self._audio_service.get_audio_sample()
             if audio_frame is None:
                 audio_frame = self._robot.media.get_audio_sample()
-            if audio_frame is not None and not self._mic_muted:
-                processed_frame, is_gated = self._audio_service.process_noise_gate(audio_frame)
-                if not is_gated:
-                    leveled_frame = self._audio_service.normalize_audio(processed_frame)
-                    audio_int16 = audio_to_int16(leveled_frame)
-                    await self.handler.receive((input_sample_rate, audio_int16))
-                self._emit_level("user", audio_frame, is_gated=is_gated)
+            if audio_frame is not None:
+                # Feed raw frames to the wake listener before noise gate / mute so
+                # wake words are heard even while the robot is sleeping or muted.
+                if self._wake_listener is not None:
+                    self._wake_listener.feed(input_sample_rate, audio_to_int16(audio_frame))
+                if not self._mic_muted:
+                    processed_frame, is_gated = self._audio_service.process_noise_gate(audio_frame)
+                    if not is_gated:
+                        leveled_frame = self._audio_service.normalize_audio(processed_frame)
+                        audio_int16 = audio_to_int16(leveled_frame)
+                        await self.handler.receive((input_sample_rate, audio_int16))
+                    self._emit_level("user", audio_frame, is_gated=is_gated)
             await asyncio.sleep(0)  # avoid busy loop
 
     async def play_loop(self) -> None:

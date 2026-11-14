@@ -21,6 +21,7 @@ from reachy_mini_conversation_app.utils import (
     setup_logger,
     log_connection_troubleshooting,
 )
+from reachy_mini_conversation_app.bookmark_insight_hooks import install_bookmark_insight_hooks
 
 
 if TYPE_CHECKING:
@@ -88,6 +89,7 @@ def run(
     # Putting these dependencies here makes the dashboard faster to load when the conversation app is installed
     from reachy_mini_conversation_app.moves import MovementManager
     from reachy_mini_conversation_app.config import (
+        GEMINI_BACKEND,
         OPENAI_BACKEND,
         HF_LOCAL_CONNECTION_MODE,
         config,
@@ -133,6 +135,13 @@ def run(
         if not (config.OPENAI_API_KEY or "").strip():
             logger.error(
                 "CONVERSATION_BACKEND=openai requires OPENAI_API_KEY. Set it in the environment or .env and restart."
+            )
+            sys.exit(1)
+    elif get_conversation_backend() == GEMINI_BACKEND:
+        logger.info("Configured Gemini Live realtime backend, model: %s", config.GEMINI_LIVE_MODEL)
+        if not (config.GEMINI_API_KEY or "").strip():
+            logger.error(
+                "CONVERSATION_BACKEND=gemini requires GEMINI_API_KEY. Set it in the environment or .env and restart."
             )
             sys.exit(1)
     else:
@@ -230,6 +239,16 @@ def run(
                 startup_voice=startup_voice,
             )
 
+        if get_conversation_backend() == GEMINI_BACKEND:
+            from reachy_mini_conversation_app.gemini_realtime import GeminiRealtimeHandler
+
+            logger.info("Using Gemini Live realtime handler (model=%s)", config.GEMINI_LIVE_MODEL)
+            return GeminiRealtimeHandler(
+                deps,
+                instance_path=instance_path,
+                startup_voice=startup_voice,
+            )
+
         from reachy_mini_conversation_app.huggingface_realtime import HuggingFaceRealtimeHandler
 
         hf_connection_selection = get_hf_connection_selection()
@@ -273,6 +292,9 @@ def run(
     # The page is served immediately, so the API must be live before the slow startup work below.
     if effective_settings_app is not None:
         stream_manager._init_settings_ui_if_needed()
+
+    # Bookmark Insight session: heartbeat on every activity, auto-close on idle/sleep/shutdown (M6).
+    bookmark_insight_hooks = install_bookmark_insight_hooks(stream_manager, logger)
 
     go_to_sleep_lock = threading.Lock()
     go_to_sleep_requested = threading.Event()
@@ -328,16 +350,52 @@ def run(
             go_to_sleep_lock.release()
 
     def go_to_sleep_action() -> dict[str, Any]:
-        """Route voice go_to_sleep to standby (wake-word wait) or the legacy app stop.
+        """Route voice go_to_sleep to local standby, OpenAI standby, or app stop.
 
-        Standby keeps the app and realtime session alive so a wake phrase can
-        resume the conversation; only handlers that support it (OpenAI backend)
-        and REACHY_MINI_STANDBY_ON_SLEEP=1 take that path.
+        Priority order:
+          1. Local standby: Gemini + acoustic wake listener active → sleep motion +
+             close Gemini session + start wake listener.  App keeps running.
+          2. OpenAI standby: REACHY_MINI_STANDBY_ON_SLEEP=1 + handler supports it.
+          3. Legacy: sleep motion + stop app.
         """
+        bookmark_insight_hooks.on_sleep()
         active_handler = getattr(stream_manager, "handler", None) or handler
+
+        # Path 1 — local acoustic standby (Gemini back-end + wake listener).
+        wake_listener = getattr(stream_manager, "_wake_listener", None)
+        if wake_listener is not None and hasattr(active_handler, "request_local_standby"):
+            logger.info("go_to_sleep_action: local standby path (Gemini + wake listener).")
+            sleep_error: str | None = None
+            try:
+                # Stop the daemon-side head wobbler too (mirrors the legacy sleep
+                # path): a sleeping robot must not wobble, and leaving it running
+                # floods errors if the daemon connection drops during standby.
+                try:
+                    robot.disable_wobbling()
+                except Exception as exc:
+                    logger.debug("Error disabling wobbling before standby: %s", exc)
+                movement_manager.stop(reset_to_neutral=False)
+                robot.goto_sleep()
+            except Exception as exc:
+                sleep_error = f"{type(exc).__name__}: {exc}"
+                logger.warning("Sleep motion failed: %s", exc)
+            local_standby_result: dict[str, Any] = active_handler.request_local_standby()
+            try:
+                wake_listener.start()
+                logger.info("WakeWordListener started; robot waiting for wake phrase.")
+            except Exception as exc:
+                logger.warning("Failed to start wake listener: %s", exc)
+            result: dict[str, Any] = {"status": "local_standby", **local_standby_result}
+            if sleep_error is not None:
+                result["sleep_error"] = sleep_error
+            return result
+
+        # Path 2 — OpenAI session-alive standby.
         if config.REACHY_MINI_STANDBY_ON_SLEEP and hasattr(active_handler, "request_standby"):
-            standby_result: dict[str, Any] = active_handler.request_standby()
-            return standby_result
+            openai_result: dict[str, Any] = active_handler.request_standby()
+            return openai_result
+
+        # Path 3 — legacy: sleep motion + stop app.
         return go_to_sleep_and_stop_app()
 
     deps.go_to_sleep = go_to_sleep_action
@@ -430,6 +488,7 @@ def run(
         keyboard_interrupted = True
         logger.info("Keyboard interruption in main thread... closing server.")
     finally:
+        bookmark_insight_hooks.on_shutdown()
         # Direct console exits put the robot to sleep (opt-out via
         # REACHY_MINI_SLEEP_ON_EXIT=0). External stops (dashboard/mobile)
         # keep the original behavior: stop the app, leave the robot awake.
