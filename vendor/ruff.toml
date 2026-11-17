@@ -1,0 +1,3 @@
+# Third-party sources vendored as git submodules (e.g. GBrain). They follow
+# their own upstream style, so keep them out of this repo's lint/format gate.
+exclude = ["*"]
