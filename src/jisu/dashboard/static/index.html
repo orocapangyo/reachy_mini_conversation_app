@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulator Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Reachy Mini · Simulator Dashboard</div>
+    <div class="status">
+      <span class="pill" id="app-pill" data-state="unknown">앱: 확인 중</span>
+      <span class="pill" id="daemon-pill" data-state="unknown">데몬: 확인 중</span>
+      <span class="pill" id="rpc-pill" data-state="unknown">대화 연결: 대기</span>
+      <span class="pill" id="turn-pill" data-state="idle">상태: -</span>
+    </div>
+    <div class="controls">
+      <button id="btn-start" type="button">시작</button>
+      <button id="btn-restart" type="button">재시작</button>
+      <button id="btn-stop" type="button" class="danger">정지</button>
+      <a id="app-ui-link" href="#" target="_blank" rel="noopener">앱 UI ↗</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel chat" aria-label="대화창">
+      <div class="panel-head">
+        <h2>대화</h2>
+        <div class="head-actions">
+          <label class="toggle"><input type="checkbox" id="mic-muted"> 마이크 음소거</label>
+          <button id="btn-interrupt" type="button" class="ghost">말 끊기</button>
+          <button id="btn-chat-clear" type="button" class="ghost">지우기</button>
+        </div>
+      </div>
+      <div class="messages" id="messages" aria-live="polite">
+        <p class="empty" id="chat-empty">스피커로 말하거나 아래에 입력하면 대화가 여기에 표시됩니다.</p>
+      </div>
+      <form class="composer" id="composer">
+        <input id="chat-input" type="text" autocomplete="off" placeholder="리치미니에게 말 걸기… (Enter로 전송)">
+        <button type="submit" id="btn-send">전송</button>
+      </form>
+    </section>
+
+    <section class="panel logs" aria-label="로그">
+      <div class="panel-head">
+        <h2>로그</h2>
+        <div class="head-actions">
+          <select id="log-source" aria-label="출처 필터">
+            <option value="">전체 출처</option>
+            <option value="app">app</option>
+            <option value="daemon">daemon</option>
+            <option value="dashboard">dashboard</option>
+          </select>
+          <select id="log-level" aria-label="레벨 필터">
+            <option value="DEBUG">DEBUG+</option>
+            <option value="INFO" selected>INFO+</option>
+            <option value="WARNING">WARNING+</option>
+            <option value="ERROR">ERROR+</option>
+          </select>
+          <input id="log-filter" type="search" placeholder="검색">
+          <label class="toggle"><input type="checkbox" id="log-follow" checked> 자동 스크롤</label>
+          <button id="btn-log-clear" type="button" class="ghost">지우기</button>
+        </div>
+      </div>
+      <div class="log-view" id="log-view"></div>
+    </section>
+
+    <aside class="panel memory" aria-label="장기 기억">
+      <div class="panel-head">
+        <h2>장기 기억</h2>
+        <button id="btn-mem-refresh" type="button" class="ghost">새로고침</button>
+      </div>
+      <div class="mem-backend">
+        <label for="mem-backend">백엔드</label>
+        <select id="mem-backend"></select>
+        <button id="btn-mem-apply" type="button">적용 (앱 재시작)</button>
+      </div>
+      <p class="hint" id="mem-backend-detail"></p>
+      <button id="btn-gbrain-init" type="button" class="ghost hidden">GBrain 초기화</button>
+
+      <form class="mem-row" id="mem-add-form">
+        <input id="mem-add-input" type="text" placeholder="직접 기억 추가">
+        <button type="submit">추가</button>
+      </form>
+      <form class="mem-row" id="mem-search-form">
+        <input id="mem-search-input" type="search" placeholder="기억 검색">
+        <button type="submit">검색</button>
+      </form>
+      <p class="hint" id="mem-view-label">저장된 기억</p>
+      <ul class="facts" id="facts"></ul>
+      <button id="btn-mem-clear" type="button" class="danger ghost">전체 삭제</button>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
