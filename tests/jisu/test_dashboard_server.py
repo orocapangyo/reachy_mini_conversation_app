@@ -66,7 +66,11 @@ def test_index_and_config(setup: tuple[TestClient, FakeController, LogBuffer]) -
     page = client.get("/")
     assert page.status_code == 200 and "Simulator Dashboard" in page.text
     assert client.get("/static/app.js").status_code == 200
-    assert client.get("/api/config").json() == {"app_port": 7860, "rpc_path": "/rpc"}
+    assert client.get("/api/config").json() == {
+        "app_port": 7860,
+        "rpc_path": "/rpc",
+        "default_memory_backend": "gbrain",
+    }
 
 
 def test_lifecycle_routes(setup: tuple[TestClient, FakeController, LogBuffer]) -> None:

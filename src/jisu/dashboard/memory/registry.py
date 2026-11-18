@@ -73,7 +73,7 @@ def backend_status(name: str, instance_path: str | Path | None = None) -> tuple[
 
 
 def selected_backend_name() -> str:
-    """Return the backend chosen through ``JISU_MEMORY_BACKEND`` (default json)."""
+    """Return the backend chosen through ``JISU_MEMORY_BACKEND`` (default gbrain)."""
     return (os.getenv(MEMORY_BACKEND_ENV, "") or DEFAULT_MEMORY_BACKEND).strip().lower()
 
 

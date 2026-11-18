@@ -10,7 +10,11 @@ from fastapi import Body, Query, FastAPI, WebSocket, HTTPException, WebSocketDis
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from jisu.dashboard.constants import APP_RPC_PATH, MEMORY_SEARCH_DEFAULT_LIMIT
+from jisu.dashboard.constants import (
+    APP_RPC_PATH,
+    DEFAULT_MEMORY_BACKEND,
+    MEMORY_SEARCH_DEFAULT_LIMIT,
+)
 from jisu.dashboard.log_buffer import LogBuffer
 from jisu.dashboard.memory.base import MemoryBackend, BackendUnavailableError
 from jisu.dashboard.memory.registry import backend_status, create_backend, available_backends
@@ -58,7 +62,7 @@ def create_app(
     app = FastAPI(title="Reachy Mini Simulator Dashboard")
 
     def current_backend_name() -> str:
-        return str(controller.status().get("memory_backend") or "json")
+        return str(controller.status().get("memory_backend") or DEFAULT_MEMORY_BACKEND)
 
     def open_backend(name: str | None) -> MemoryBackend:
         backend_name = (name or current_backend_name()).strip().lower()
@@ -77,7 +81,11 @@ def create_app(
 
     @app.get("/api/config")
     def _config() -> dict[str, Any]:
-        return {"app_port": app_port, "rpc_path": APP_RPC_PATH}
+        return {
+            "app_port": app_port,
+            "rpc_path": APP_RPC_PATH,
+            "default_memory_backend": DEFAULT_MEMORY_BACKEND,
+        }
 
     # -- app lifecycle ------------------------------------------------------
 

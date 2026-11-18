@@ -19,6 +19,7 @@ from jisu.dashboard.memory.gbrain_backend import (
     fact_from_wire,
     parse_json_object,
     resolve_gbrain_binary,
+    ensure_brain_initialized,
 )
 from reachy_mini_conversation_app.memory import (
     MemoryFact,
@@ -270,7 +271,7 @@ def test_registry_builtins_and_selection(tmp_path: Path, monkeypatch: pytest.Mon
     assert registry.backend_status("nope", tmp_path)[0] is False
 
     monkeypatch.delenv("JISU_MEMORY_BACKEND", raising=False)
-    assert registry.selected_backend_name() == "json"
+    assert registry.selected_backend_name() == "gbrain"
     monkeypatch.setenv("JISU_MEMORY_BACKEND", " GBrain ")
     assert registry.selected_backend_name() == "gbrain"
 
@@ -340,3 +341,34 @@ def test_gbrain_search_falls_back_to_local_keywords(tmp_path: Path) -> None:
     assert [f.text for f in backend.search("매운 음식", 5)] == ["사용자는 매운 음식을 못 먹는다"]
     assert [f.text for f in backend.search("고양이", 5)] == ["사용자의 고양이 이름은 모모다"]
     assert backend.search("없는 말", 5) == []
+
+
+def test_ensure_brain_initialized(tmp_path: Path) -> None:
+    """First use initializes the brain once; missing gbrain or a failed init only reports."""
+    home = tmp_path / "gbrain"
+    binary = tmp_path / "fake-gbrain"
+    binary.write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def init_runner(args: Sequence[str], env: Mapping[str, str], timeout_s: float) -> CommandResult:
+        calls.append(list(args))
+        (home / ".gbrain").mkdir(parents=True, exist_ok=True)
+        (home / ".gbrain" / "config.json").write_text("{}", encoding="utf-8")
+        return CommandResult(0, '{"status":"ok"}', "")
+
+    brain = GBrainMemoryBackend(runner=init_runner, binary=str(binary), home=home, require_ready=False)
+    message = ensure_brain_initialized(brain=brain)
+    assert message is not None and message.startswith("INFO: GBrain initialized")
+    assert ensure_brain_initialized(brain=brain) is None
+    assert len(calls) == 1
+
+    def failing_runner(args: Sequence[str], env: Mapping[str, str], timeout_s: float) -> CommandResult:
+        return CommandResult(1, "", "boom")
+
+    broken = GBrainMemoryBackend(runner=failing_runner, binary=str(binary), home=tmp_path / "b", require_ready=False)
+    assert (ensure_brain_initialized(brain=broken) or "").startswith("ERROR:")
+
+    missing = GBrainMemoryBackend(
+        runner=failing_runner, binary=str(tmp_path / "nope"), home=tmp_path / "c", require_ready=False
+    )
+    assert (ensure_brain_initialized(brain=missing) or "").startswith("WARNING:")

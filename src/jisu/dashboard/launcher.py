@@ -35,12 +35,14 @@ from jisu.dashboard.constants import (
     DAEMON_HEALTH_TIMEOUT_S,
 )
 from jisu.dashboard.log_buffer import LogBuffer
+from jisu.dashboard.memory.gbrain_backend import GBrainMemoryBackend, ensure_brain_initialized
 
 
 APP_ENTRY_MODULE = "jisu.dashboard.app_entry"
 DASHBOARD_SOURCE = "dashboard"
 DAEMON_SOURCE = "daemon"
 APP_SOURCE = "app"
+GBRAIN_BACKEND_NAME = "gbrain"
 
 
 @dataclass
@@ -268,6 +270,18 @@ class SimulationLauncher:
     def _log(self, message: str) -> None:
         self.logs.append(DASHBOARD_SOURCE, message)
 
+    def _prepare_memory_backend(self) -> None:
+        """Create the GBrain brain on first use, so the default backend works out of the box."""
+        if self.settings.memory_backend != GBRAIN_BACKEND_NAME:
+            return
+        brain = GBrainMemoryBackend(require_ready=False)
+        if brain.is_initialized():
+            return
+        self._log(f"INFO: initializing GBrain brain at {brain.home} (first run, may take a while)")
+        message = ensure_brain_initialized(brain=brain)
+        if message:
+            self._log(message)
+
     def ensure_daemon(self) -> None:
         """Reuse a running daemon or start one and wait until it is healthy."""
         with self._lock:
@@ -306,6 +320,7 @@ class SimulationLauncher:
                     f"port {self.settings.app_port} is already in use: stop the other conversation app first"
                 )
             self.ensure_daemon()
+            self._prepare_memory_backend()
             argv = build_app_command(sys.executable, self.settings)
             env = build_app_env(os.environ, self.settings)
             self.app.start(argv, env, cwd=self._cwd)

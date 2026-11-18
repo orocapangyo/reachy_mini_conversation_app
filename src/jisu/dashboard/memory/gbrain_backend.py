@@ -398,3 +398,28 @@ class GBrainMemoryBackend:
     def format_for_prompt(self) -> str:
         """Render the newest facts with the upstream prompt header."""
         return format_facts_for_prompt(self.list_facts())
+
+
+def ensure_brain_initialized(
+    instance_path: str | Path | None = None,
+    *,
+    brain: GBrainMemoryBackend | None = None,
+) -> str | None:
+    """Initialize the brain once when gbrain is installed but has no brain yet.
+
+    Never raises: returns a log line describing what happened, or None when the
+    brain was already initialized. If gbrain is missing or init fails, the app's
+    memory hook falls back to json as before.
+    """
+    brain = brain or GBrainMemoryBackend(instance_path, require_ready=False)
+    if brain.is_initialized():
+        return None
+    if not brain.binary_available():
+        return f"WARNING: {brain.readiness_problem()} Falling back to json."
+    try:
+        brain.initialize()
+    except GBrainCallError as exc:
+        return f"ERROR: {exc} Falling back to json."
+    if not brain.is_initialized():
+        return f"WARNING: gbrain init finished but no brain config at {brain.config_path}. Falling back to json."
+    return f"INFO: GBrain initialized at {brain.home}"

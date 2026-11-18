@@ -17,7 +17,7 @@ python -m jisu.dashboard             # 시뮬 데몬 + 대화 앱 기동, http:/
 
 | 옵션 | 설명 |
 | :--- | :--- |
-| `--backend json\|gbrain` | 대화 앱이 쓸 장기 기억 백엔드 (기본: `JISU_MEMORY_BACKEND` 또는 `json`) |
+| `--backend json\|gbrain` | 대화 앱이 쓸 장기 기억 백엔드 (기본: `JISU_MEMORY_BACKEND` 또는 `gbrain`) |
 | `--headless` | MuJoCo 3D 창 없이 데몬 실행 |
 | `--conversation-backend openai\|gemini\|hf` | `CONVERSATION_BACKEND`를 덮어쓴다 (기본은 `.env` 설정을 따름) |
 | `--profile NAME` | 페르소나 (기본 `desk_companion_ko`) |
@@ -77,7 +77,7 @@ gbrain --version
 
 | 환경 변수 | 기본값 | 설명 |
 | :--- | :--- | :--- |
-| `JISU_MEMORY_BACKEND` | `json` | 대화 앱이 쓸 기억 백엔드 |
+| `JISU_MEMORY_BACKEND` | `gbrain` | 대화 앱이 쓸 기억 백엔드 |
 | `JISU_GBRAIN_BIN` | `gbrain` | gbrain 실행 파일 경로 |
 | `JISU_GBRAIN_HOME` | `<앱 데이터 폴더>/gbrain` | `GBRAIN_HOME` 경로 |
 | `JISU_GBRAIN_TIMEOUT_S` | `30` | CLI 호출 타임아웃(초) |

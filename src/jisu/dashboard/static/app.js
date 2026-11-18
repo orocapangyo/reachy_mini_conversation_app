@@ -243,6 +243,7 @@ function connectLogs() {
 
 // --- app status / lifecycle -------------------------------------------------
 let currentBackend = null;
+let defaultBackend = "gbrain";
 
 async function refreshStatus() {
   try {
@@ -280,7 +281,7 @@ async function lifecycle(action, body) {
 let backendInfo = [];
 
 function selectedBackend() {
-  return $("mem-backend").value || currentBackend || "json";
+  return $("mem-backend").value || currentBackend || defaultBackend;
 }
 
 async function loadBackends() {
@@ -303,12 +304,18 @@ async function loadBackends() {
   }
 }
 
+function backendUsageNote(info, usingNow) {
+  if (!usingNow) return " · 적용하면 앱이 재시작됩니다";
+  // The app's memory hook falls back to json when the selected backend cannot run.
+  return info.available ? " · 현재 대화 앱이 사용 중" : " · 지금 대화 앱은 JSON으로 대체 동작 중 (초기화 후 적용하세요)";
+}
+
 function updateBackendDetail() {
   const name = selectedBackend();
   const info = backendInfo.find((b) => b.name === name);
   const usingNow = name === currentBackend;
   $("mem-backend-detail").textContent = info
-    ? `${info.available ? "✅ 사용 가능" : "⚠️ " + info.detail}${usingNow ? " · 현재 대화 앱이 사용 중" : " · 적용하면 앱이 재시작됩니다"}`
+    ? `${info.available ? "✅ 사용 가능" : "⚠️ " + info.detail}${backendUsageNote(info, usingNow)}`
     : "";
   $("btn-gbrain-init").classList.toggle("hidden", !(name === "gbrain" && info && !info.available));
 }
@@ -461,6 +468,7 @@ async function boot() {
 
   const config = await api("/api/config");
   const appHost = location.hostname || "localhost";
+  if (config.default_memory_backend) defaultBackend = config.default_memory_backend;
   chat.url = `ws://${appHost}:${config.app_port}${config.rpc_path}`;
   $("app-ui-link").href = `http://${appHost}:${config.app_port}/#/`;
 

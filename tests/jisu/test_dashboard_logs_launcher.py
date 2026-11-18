@@ -146,4 +146,4 @@ def test_app_env_keeps_conversation_backend_from_dotenv() -> None:
     """Without an override the app's own .env decides the conversation backend."""
     env = build_app_env({}, LaunchSettings())
     assert "CONVERSATION_BACKEND" not in env
-    assert env["JISU_MEMORY_BACKEND"] == "json"
+    assert env["JISU_MEMORY_BACKEND"] == "gbrain"

@@ -17,7 +17,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from collections.abc import Callable
 
-from jisu.dashboard.constants import DEFAULT_MEMORY_BACKEND
+from jisu.dashboard.constants import DEFAULT_MEMORY_BACKEND, FALLBACK_MEMORY_BACKEND
 from jisu.dashboard.memory.base import MemoryBackend, BackendUnavailableError
 from jisu.dashboard.memory.registry import create_backend
 from reachy_mini_conversation_app.memory import MemoryFact, ForgetMemoryResult
@@ -72,9 +72,9 @@ class _BackendResolver:
                 "Memory backend %r unavailable (%s); falling back to %r.",
                 self.backend_name,
                 exc,
-                DEFAULT_MEMORY_BACKEND,
+                FALLBACK_MEMORY_BACKEND,
             )
-            backend = create_backend(DEFAULT_MEMORY_BACKEND, instance_path)
+            backend = create_backend(FALLBACK_MEMORY_BACKEND, instance_path)
         logger.info("Long-term memory backend: %s", backend.name)
         return backend
 
@@ -110,7 +110,7 @@ def install_memory_hook(backend_name: str) -> InstalledHook:
             raise RuntimeError(f"memory hook target {module_name}.{attr} no longer exists; update HOOK_TARGETS")
         modules[(module_name, attr)] = module
 
-    if name == DEFAULT_MEMORY_BACKEND:
+    if name == FALLBACK_MEMORY_BACKEND:
         logger.info("Long-term memory backend: json (upstream memory.py)")
         return InstalledHook(backend_name=name, originals={})
 

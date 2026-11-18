@@ -22,7 +22,9 @@ LOG_SUBSCRIBER_QUEUE_MAX = 1000
 
 # --- memory backends ---------------------------------------------------------
 MEMORY_BACKEND_ENV = "JISU_MEMORY_BACKEND"
-DEFAULT_MEMORY_BACKEND = "json"
+# gbrain falls back to json (upstream memory.py) when it is not installed/initialized.
+DEFAULT_MEMORY_BACKEND = "gbrain"
+FALLBACK_MEMORY_BACKEND = "json"
 MEMORY_SEARCH_DEFAULT_LIMIT = 10
 
 # --- GBrain ------------------------------------------------------------------
