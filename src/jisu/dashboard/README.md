@@ -94,6 +94,39 @@ gbrain --version
 | `JISU_GBRAIN_HOME` | `<앱 데이터 폴더>/gbrain` | `GBRAIN_HOME` 경로 |
 | `JISU_GBRAIN_TIMEOUT_S` | `30` | CLI 호출 타임아웃(초) |
 
+## 기억 카테고리와 페르소나 (`jisu.persona`)
+
+페르소나는 두 층으로 나눈다.
+
+| 층 | 위치 | 내용 |
+|---|---|---|
+| 고정 정체성 | `profiles/<이름>/profile.md` (그대로) | 이름·정체성, 응답 규칙, 도구 목록, 목소리, 인사 |
+| 성장하는 페르소나·기억 | GBrain (`entity` + `kind`로 분류) | 대화하며 쌓이는 성격·말투, 약속, 사용자 취향·행동 |
+
+카테고리 표는 `src/jisu/persona/categories.py` 한 곳에 있다.
+
+| 카테고리 | entity | kind | 대시보드 칩 |
+|---|---|---|---|
+| `persona_trait` | `reachy-mini` | `belief` | 페르소나 |
+| `persona_style` | `reachy-mini` | `preference` | 페르소나 |
+| `promise` | `reachy-mini` | `commitment` | 약속 |
+| `user_preference` / `user_behavior` / `user_fact` | `user` | `preference` / `event` / `fact` | 사용자 |
+
+- 기존 `remember` 도구는 `user_fact`로 저장한다. entity 없이 저장된 예전 기억도 `user_fact`로 보인다.
+- 세션 프롬프트는 `[나(Reachy)…] → [약속] → [사용자…]` 섹션으로 profile 지시문 앞에 붙는다. 충돌하면 profile이 우선이다.
+- LLM은 `update_persona` 도구(`src/jisu/tools/`)로 성격·말투·약속을 직접 남긴다. 런처가 `REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY`와 `AUTOLOAD_EXTERNAL_TOOLS=1`을 넣어 준다. `.env`에 같은 변수가 있으면 그 값이 이긴다.
+- json 백엔드는 카테고리를 저장하지 않는다. 칩이 숨겨지고 `update_persona`는 오류를 돌려준다.
+
+### 페르소나 적용 가이드
+
+1. **어디에 쓸지:** "새 사용자를 만나도 똑같아야 하나?" → 예면 `profile.md`, 아니면 GBrain.
+2. **문장 쓰는 법:** GBrain에는 "나는 ~한다" / "사용자는 ~한다" 형태로, 한 문장에 사실 하나만 쓴다. 명령문("~해라")은 `profile.md`에만 쓴다.
+   한국어 키워드 검색은 3글자 미만 단어를 버리므로 핵심 단어는 3글자 이상으로 쓴다.
+3. **초기 페르소나:** `src/jisu/persona/seeds/<프로필 이름>.toml`에 3~7문장을 적는다 (예: `desk_companion_ko.toml`).
+   GBrain을 처음 초기화할 때 자동으로 들어가고, 대시보드의 **페르소나 시드 넣기**로 다시 넣을 수 있다. 이미 있는 문장은 "이미 있음"으로 건너뛴다.
+4. **확인:** 기억 패널의 **프롬프트 미리보기**로 실제로 들어가는 섹션을 본다.
+5. **지우기:** 기억 패널에서 id로 지운다. GBrain에서 지운 문장은 철회 상태가 되어 같은 문장으로 다시 저장되지 않는다 (시드도 다시 넣지 않음).
+
 ## 새 기억 백엔드 추가 (SQLite, 온톨로지 등)
 
 1. `memory/<name>_backend.py`에 `MemoryBackend` 프로토콜(`memory/base.py`)을 구현한다.

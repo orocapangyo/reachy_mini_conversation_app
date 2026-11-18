@@ -8,6 +8,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 import pytest
+from gbrain_fakes import FakeGBrain, make_gbrain
 
 from jisu.dashboard.memory import registry
 from jisu.dashboard.memory.base import BackendUnavailableError, keyword_search, format_facts_for_prompt
@@ -89,76 +90,11 @@ def test_format_facts_matches_upstream_prompt(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-class FakeGBrain:
-    """In-memory stand-in for ``gbrain call <op> <json>``."""
-
-    def __init__(self) -> None:
-        """Initialize the test double."""
-        self.facts: list[dict[str, Any]] = []
-        self.calls: list[tuple[list[str], dict[str, str]]] = []
-        self.fail_ops: set[str] = set()
-        self.next_id = 1
-
-    def __call__(self, args: Sequence[str], env: Mapping[str, str], timeout_s: float) -> CommandResult:
-        """Test double for ``__call__``."""
-        argv = list(args)
-        self.calls.append((argv, dict(env)))
-        if argv[1] == "init":
-            return CommandResult(0, '{"status":"ok"}', "")
-        assert argv[1] == "call"
-        op, params = argv[2], json.loads(argv[3])
-        if op in self.fail_ops:
-            return CommandResult(1, "", f"{op} exploded")
-        if op == "remember":
-            for fact in self.facts:
-                if fact["fact"] == params["fact"]:
-                    return self._ok({"id": fact["fact_id"], "status": "duplicate"})
-            fact_id = str(self.next_id)
-            self.next_id += 1
-            self.facts.insert(
-                0,
-                {
-                    "fact_id": fact_id,
-                    "id": int(fact_id),
-                    "fact": params["fact"],
-                    "created_at": "2026-11-17T09:00:00+00:00",
-                },
-            )
-            return self._ok({"id": fact_id, "status": "inserted"})
-        if op == "recall":
-            facts = list(self.facts)
-            if "question" in params:
-                words = params["question"].lower().split()
-                facts = [f for f in facts if any(w in f["fact"].lower() for w in words)]
-            return self._ok({"facts": facts[: params.get("limit", 60)], "total": len(facts)}, notice=True)
-        if op == "forget":
-            self.facts = [f for f in self.facts if f["fact_id"] != params["id"]]
-            return self._ok({"id": params["id"], "status": "forgotten"})
-        raise AssertionError(f"unexpected op {op}")
-
-    @staticmethod
-    def _ok(payload: dict[str, Any], notice: bool = False) -> CommandResult:
-        body = json.dumps({"protocol_version": 1, **payload})
-        if notice:
-            body = "[AGENT] notice: keyword-only\n" + body
-        return CommandResult(0, body, "")
-
-
-def _gbrain(tmp_path: Path, fake: FakeGBrain, *, initialized: bool = True) -> GBrainMemoryBackend:
-    home = tmp_path / "gbrain"
-    binary = tmp_path / "fake-gbrain"
-    binary.write_text("", encoding="utf-8")
-    if initialized:
-        (home / ".gbrain").mkdir(parents=True)
-        (home / ".gbrain" / "config.json").write_text("{}", encoding="utf-8")
-    return GBrainMemoryBackend(runner=fake, binary=str(binary), home=home, require_ready=initialized)
-
-
 def test_gbrain_backend_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Remember, recall, search, forget and prompt formatting through the CLI contract."""
     monkeypatch.setenv("DATABASE_URL", "postgres://shared")
     fake = FakeGBrain()
-    backend = _gbrain(tmp_path, fake)
+    backend = make_gbrain(tmp_path, fake)
 
     first = backend.add_fact("  Likes   jazz ")
     second = backend.add_fact("Has a cat named Momo")
@@ -184,7 +120,7 @@ def test_gbrain_backend_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 def test_gbrain_backend_failures_do_not_raise(tmp_path: Path) -> None:
     """Conversation-facing methods log and return empty results when the CLI fails."""
     fake = FakeGBrain()
-    backend = _gbrain(tmp_path, fake)
+    backend = make_gbrain(tmp_path, fake)
     backend.add_fact("Likes jazz")
     fake.fail_ops = {"remember", "recall", "forget"}
 
@@ -200,7 +136,7 @@ def test_gbrain_backend_failures_do_not_raise(tmp_path: Path) -> None:
 def test_gbrain_backend_forget_failure_keeps_fact(tmp_path: Path) -> None:
     """A failed forget reports nothing removed."""
     fake = FakeGBrain()
-    backend = _gbrain(tmp_path, fake)
+    backend = make_gbrain(tmp_path, fake)
     backend.add_fact("Likes jazz")
     fake.fail_ops = {"forget"}
     assert backend.forget_fact("jazz").removed is None
@@ -314,7 +250,7 @@ def test_gbrain_error_envelope_message_is_reported(tmp_path: Path) -> None:
         envelope = {"error": "invalid_params", "code": "invalid_params", "message": "fact_withdrawn: forgotten"}
         return CommandResult(2, json.dumps(envelope), "Error [invalid_params]")
 
-    backend = _gbrain(tmp_path, FakeGBrain())
+    backend = make_gbrain(tmp_path, FakeGBrain())
     backend._runner = refuse
     with pytest.raises(GBrainCallError, match="invalid_params: fact_withdrawn"):
         backend.call("remember", {"fact": "x", "provenance": "y"})
@@ -335,7 +271,7 @@ def test_gbrain_search_falls_back_to_local_keywords(tmp_path: Path) -> None:
                     return self._ok({"facts": [], "facts_degraded": {"reason": "no_query_terms"}})
             return super().__call__(args, env, timeout_s)
 
-    backend = _gbrain(tmp_path, KoreanBlindGBrain())
+    backend = make_gbrain(tmp_path, KoreanBlindGBrain())
     backend.add_fact("사용자는 매운 음식을 못 먹는다")
     backend.add_fact("사용자의 고양이 이름은 모모다")
     assert [f.text for f in backend.search("매운 음식", 5)] == ["사용자는 매운 음식을 못 먹는다"]
@@ -372,3 +308,94 @@ def test_ensure_brain_initialized(tmp_path: Path) -> None:
         runner=failing_runner, binary=str(tmp_path / "nope"), home=tmp_path / "c", require_ready=False
     )
     assert (ensure_brain_initialized(brain=missing) or "").startswith("WARNING:")
+
+
+# --------------------------------------------------------------------------
+# GBrain categories (entity + kind)
+# --------------------------------------------------------------------------
+
+
+def _remember_params(fake: FakeGBrain) -> list[dict[str, Any]]:
+    return [json.loads(argv[3]) for argv, _env in fake.calls if argv[1:3] == ["call", "remember"]]
+
+
+def test_gbrain_categorized_round_trip(tmp_path: Path) -> None:
+    """Categories are written as GBrain entity/kind and read back from them."""
+    fake = FakeGBrain()
+    backend = make_gbrain(tmp_path, fake)
+
+    trait = backend.add_categorized("나는 농담을 짧게 한다", "persona_trait")
+    promise = backend.add_categorized("나는 졸면 깨워 주기로 했다", "promise", provenance="seed")
+    legacy = backend.add_fact("Has a cat named Momo")
+    assert trait is not None and promise is not None and legacy is not None
+
+    sent = _remember_params(fake)
+    assert sent[0] | {"provenance": ""} == {
+        "fact": "나는 농담을 짧게 한다",
+        "provenance": "",
+        "kind": "belief",
+        "entity": "reachy-mini",
+    }
+    assert sent[1]["provenance"] == "seed" and sent[1]["kind"] == "commitment"
+    assert (sent[2]["entity"], sent[2]["kind"]) == ("user", "fact")
+
+    listed = {item.fact.text: item.category.key for item in backend.list_categorized()}
+    assert listed == {
+        "나는 농담을 짧게 한다": "persona_trait",
+        "나는 졸면 깨워 주기로 했다": "promise",
+        "Has a cat named Momo": "user_fact",
+    }
+
+
+def test_gbrain_unattributed_facts_read_as_user_facts(tmp_path: Path) -> None:
+    """Facts saved before categories (no entity) show up as user facts."""
+    fake = FakeGBrain()
+    fake.facts.append({"fact_id": "9", "id": 9, "fact": "Likes jazz", "kind": "fact", "entity_slug": None})
+    backend = make_gbrain(tmp_path, fake)
+    [item] = backend.list_categorized()
+    assert item.category.key == "user_fact"
+
+
+def test_gbrain_prompt_is_sectioned(tmp_path: Path) -> None:
+    """The session prompt lists persona, promises and user facts in their own sections."""
+    backend = make_gbrain(tmp_path, FakeGBrain())
+    backend.add_categorized("나는 존댓말을 부드럽게 쓴다", "persona_style")
+    backend.add_categorized("사용자는 매운 음식을 좋아한다", "user_preference")
+    prompt = backend.format_for_prompt()
+    persona_at = prompt.index("- 나는 존댓말을 부드럽게 쓴다")
+    user_at = prompt.index("- 사용자는 매운 음식을 좋아한다")
+    assert prompt.startswith("[나(Reachy)")
+    assert persona_at < user_at
+    assert "[사용자와 한 약속" not in prompt  # empty sections are left out
+
+
+def test_gbrain_forget_by_id_keeps_same_text_elsewhere(tmp_path: Path) -> None:
+    """Forgetting by id removes exactly that fact."""
+    fake = FakeGBrain()
+    backend = make_gbrain(tmp_path, fake)
+    first = backend.add_categorized("커피를 좋아한다", "user_preference")
+    other = backend.add_categorized("나는 커피 이야기를 즐긴다", "persona_trait")
+    assert first is not None and other is not None
+
+    removed = backend.forget_by_id(first.fact.id)
+    assert removed is not None and removed.id == first.fact.id
+    assert [item.fact.id for item in backend.list_categorized()] == [other.fact.id]
+    assert backend.forget_by_id("does-not-exist") is None
+
+
+def test_gbrain_categorized_search_falls_back_to_keywords(tmp_path: Path) -> None:
+    """Korean queries GBrain cannot rank still find facts locally, with their category."""
+    fake = FakeGBrain()
+    backend = make_gbrain(tmp_path, fake)
+    backend.add_categorized("나는 농담을 짧게 한다", "persona_trait")
+    fake.rank_questions = False  # GBrain drops short Korean words: nothing ranked
+    found = backend.search_categorized("농담", 5)
+    assert [(item.fact.text, item.category.key) for item in found] == [("나는 농담을 짧게 한다", "persona_trait")]
+    assert backend.search_categorized("   ", 5) == []
+
+
+def test_gbrain_add_categorized_rejects_unknown_category(tmp_path: Path) -> None:
+    """An unknown category is a programming error, not a silent user fact."""
+    backend = make_gbrain(tmp_path, FakeGBrain())
+    with pytest.raises(KeyError):
+        backend.add_categorized("x", "nope")

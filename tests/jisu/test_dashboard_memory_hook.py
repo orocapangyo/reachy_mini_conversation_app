@@ -9,7 +9,7 @@ import pytest
 
 from jisu.dashboard.memory import registry
 from jisu.dashboard.memory.base import BackendUnavailableError, format_facts_for_prompt
-from jisu.dashboard.memory.hook import HOOK_TARGETS, install_memory_hook
+from jisu.dashboard.memory.hook import HOOK_TARGETS, active_backend, install_memory_hook
 from reachy_mini_conversation_app.memory import MemoryFact, ForgetMemoryResult
 
 
@@ -132,3 +132,16 @@ def test_missing_target_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     with pytest.raises(RuntimeError, match="no longer exists"):
         install_memory_hook("recording")
+
+
+def test_active_backend_is_the_hooked_instance(tmp_path: Path, test_backends: None) -> None:
+    """Jisu tools get the very backend instance the call sites use."""
+    hook = install_memory_hook("recording")
+    try:
+        remember_mod = importlib.import_module("reachy_mini_conversation_app.tools.remember")
+        remember_mod.add_memory_fact(tmp_path, "Likes jazz")
+        backend = active_backend(tmp_path)
+        assert [f.text for f in backend.list_facts()] == ["Likes jazz"]
+        assert RecordingBackend.instances == [tmp_path]
+    finally:
+        hook.uninstall()

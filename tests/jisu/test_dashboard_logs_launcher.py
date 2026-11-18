@@ -1,6 +1,7 @@
 """Tests for the dashboard log buffer and launcher command builders."""
 
 from __future__ import annotations
+import os
 import asyncio
 from pathlib import Path
 
@@ -170,6 +171,9 @@ def test_app_command_and_env() -> None:
     assert env["JISU_MEMORY_BACKEND"] == "gbrain"
     assert env["CONVERSATION_BACKEND"] == "gemini"
     assert env["PYTHONUTF8"] == "1"
+    # jisu-owned tools (update_persona) are loaded from src/jisu/tools.
+    assert env["AUTOLOAD_EXTERNAL_TOOLS"] == "1"
+    assert env["REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY"].endswith(os.path.join("jisu", "tools"))
 
 
 def test_app_env_keeps_conversation_backend_from_dotenv() -> None:

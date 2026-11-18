@@ -298,7 +298,44 @@ input[type="text"], input[type="search"], select {
 .facts .fact-time { display: block; color: var(--muted); font-size: 11px; }
 .facts button { padding: 2px 8px; font-size: 12px; }
 .facts .none { color: var(--muted); justify-content: center; }
-#btn-mem-clear { align-self: flex-start; }
+.mem-row.wrap { flex-wrap: wrap; }
+.mem-row.wrap select { flex-basis: 100%; }
+.mem-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.mem-chips button {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+.mem-chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.mem-chips .count { color: inherit; opacity: 0.7; margin-left: 4px; }
+.facts li.fact-group {
+  display: block;
+  padding: 6px 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border-left: 3px solid var(--border);
+  border-bottom: none;
+}
+.facts li.fact-group.reachy { border-left-color: var(--accent); }
+.facts li.fact-group.user { border-left-color: var(--ok); }
+.mem-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mem-prompt {
+  margin-top: 8px;
+  padding: 8px 10px;
+  max-height: 30vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bot-bubble);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
 
 /* --- toast ----------------------------------------------------------- */
 .toast {

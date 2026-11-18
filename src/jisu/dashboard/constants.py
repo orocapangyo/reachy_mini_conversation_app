@@ -47,6 +47,10 @@ GBRAIN_HOME_DIRNAME = "gbrain"
 GBRAIN_PROVENANCE = "reachy-mini conversation (remember tool)"
 GBRAIN_FORGET_REASON = "user asked the robot to forget"
 
+# --- external tools (src/jisu/tools, e.g. update_persona) -----------------------
+EXTERNAL_TOOLS_DIR_ENV = "REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY"
+AUTOLOAD_EXTERNAL_TOOLS_ENV = "AUTOLOAD_EXTERNAL_TOOLS"
+
 # --- thinking trace ----------------------------------------------------------
 # Tool-call trace lines the app process prints (via the trace hook) for the chat's thinking panel.
 TRACE_MARKER = "[jisu-trace] "

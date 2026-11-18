@@ -92,7 +92,9 @@
       <p class="hint" id="mem-backend-detail"></p>
       <button id="btn-gbrain-init" type="button" class="ghost hidden">GBrain 초기화</button>
 
-      <form class="mem-row" id="mem-add-form">
+      <div class="mem-chips hidden" id="mem-chips" role="group" aria-label="기억 분류 필터"></div>
+      <form class="mem-row wrap" id="mem-add-form">
+        <select id="mem-add-category" class="hidden" aria-label="추가할 기억의 분류"></select>
         <input id="mem-add-input" type="text" placeholder="직접 기억 추가">
         <button type="submit">추가</button>
       </form>
@@ -102,7 +104,12 @@
       </form>
       <p class="hint" id="mem-view-label">저장된 기억</p>
       <ul class="facts" id="facts"></ul>
-      <button id="btn-mem-clear" type="button" class="danger ghost">전체 삭제</button>
+      <div class="mem-actions">
+        <button id="btn-mem-seed" type="button" class="ghost hidden">페르소나 시드 넣기</button>
+        <button id="btn-mem-prompt" type="button" class="ghost" aria-expanded="false">프롬프트 미리보기</button>
+        <button id="btn-mem-clear" type="button" class="danger ghost">전체 삭제</button>
+      </div>
+      <pre class="mem-prompt hidden" id="mem-prompt" aria-label="대화 앱에 들어가는 기억 프롬프트"></pre>
     </aside>
     </div>
   </main>

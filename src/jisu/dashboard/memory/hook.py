@@ -19,7 +19,7 @@ from collections.abc import Callable
 
 from jisu.dashboard.constants import DEFAULT_MEMORY_BACKEND, FALLBACK_MEMORY_BACKEND
 from jisu.dashboard.memory.base import MemoryBackend, BackendUnavailableError
-from jisu.dashboard.memory.registry import create_backend
+from jisu.dashboard.memory.registry import create_backend, selected_backend_name
 from reachy_mini_conversation_app.memory import MemoryFact, ForgetMemoryResult
 
 
@@ -45,6 +45,7 @@ class InstalledHook:
         """Restore the original call-site functions."""
         for (module_name, attr), original in self.originals.items():
             setattr(importlib.import_module(module_name), attr, original)
+        _set_active_resolver(None)
 
 
 class _BackendResolver:
@@ -79,6 +80,31 @@ class _BackendResolver:
         return backend
 
 
+_active_resolver: _BackendResolver | None = None
+_active_lock = threading.Lock()
+
+
+def active_backend(instance_path: str | Path | None) -> MemoryBackend:
+    """Return the backend the app's memory call sites use (same instance, same json fallback).
+
+    Tools outside the upstream package (e.g. ``update_persona``) call this so they
+    write to the very store the prompt reads. Works without :func:`install_memory_hook`
+    too, using ``JISU_MEMORY_BACKEND``.
+    """
+    global _active_resolver
+    with _active_lock:
+        if _active_resolver is None:
+            _active_resolver = _BackendResolver(selected_backend_name() or DEFAULT_MEMORY_BACKEND)
+        resolver = _active_resolver
+    return resolver.get(instance_path)
+
+
+def _set_active_resolver(resolver: _BackendResolver | None) -> None:
+    global _active_resolver
+    with _active_lock:
+        _active_resolver = resolver
+
+
 def _build_replacements(resolver: _BackendResolver) -> dict[str, Callable[..., Any]]:
     def format_memory_for_prompt(instance_path: str | Path | None = None) -> str:
         return resolver.get(instance_path).format_for_prompt()
@@ -110,11 +136,13 @@ def install_memory_hook(backend_name: str) -> InstalledHook:
             raise RuntimeError(f"memory hook target {module_name}.{attr} no longer exists; update HOOK_TARGETS")
         modules[(module_name, attr)] = module
 
+    resolver = _BackendResolver(name)
+    _set_active_resolver(resolver)
     if name == FALLBACK_MEMORY_BACKEND:
         logger.info("Long-term memory backend: json (upstream memory.py)")
         return InstalledHook(backend_name=name, originals={})
 
-    replacements = _build_replacements(_BackendResolver(name))
+    replacements = _build_replacements(resolver)
     originals: dict[tuple[str, str], Any] = {}
     for (module_name, attr), module in modules.items():
         originals[(module_name, attr)] = getattr(module, attr)

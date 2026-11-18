@@ -3,9 +3,13 @@
 Uses ``gbrain call <op> '<json>'`` (the operation contract shared by the CLI and
 MCP, see ``vendor/gbrain/docs/protocol/MEMORY_VERBS_v1.md``):
 
-- ``remember {fact, provenance, kind}`` -> ``{id, status}``
-- ``recall {limit}`` / ``recall {question, limit}`` -> ``{facts: [{fact_id, fact, created_at, ...}]}``
+- ``remember {fact, provenance, kind, entity}`` -> ``{id, status, entity_slug}``
+- ``recall {limit}`` / ``recall {question, limit}`` -> ``{facts: [{fact_id, fact, kind, entity_slug, created_at, ...}]}``
 - ``forget {id, reason}``
+
+Categories (:mod:`jisu.persona.categories`) map onto GBrain's own ``entity`` +
+``kind`` fields, so a recalled fact carries its category without extra storage.
+Facts saved before categories existed have no entity and read back as user facts.
 
 Each instance gets its own brain under ``GBRAIN_HOME=<data dir>/gbrain`` (GBrain
 appends ``.gbrain``), initialized keyless with PGLite (``init --pglite
@@ -28,6 +32,9 @@ from datetime import datetime
 from dataclasses import dataclass
 from collections.abc import Mapping, Callable, Sequence
 
+from jisu.persona.prompt import format_categorized_prompt
+from jisu.persona.constants import CATEGORIZED_LIST_LIMIT
+from jisu.persona.categories import DEFAULT_CATEGORY_KEY, CategorizedFact, category_for, get_category
 from jisu.dashboard.constants import (
     GBRAIN_BIN_ENV,
     BUN_INSTALL_ENV,
@@ -45,7 +52,6 @@ from jisu.dashboard.memory.base import (
     BackendUnavailableError,
     keyword_search,
     substring_candidates,
-    format_facts_for_prompt,
 )
 from reachy_mini_conversation_app.memory import (
     MAX_FACTS,
@@ -148,6 +154,23 @@ def fact_from_wire(value: object) -> MemoryFact | None:
     if created_at is None:
         created_at = _timestamp_ms(value.get("valid_from"))
     return MemoryFact(id=str(fact_id), text=normalized, created_at=created_at or 0)
+
+
+def categorized_from_wire(value: object) -> CategorizedFact | None:
+    """Convert one GBrain recall fact into a :class:`CategorizedFact` (category from entity_slug + kind)."""
+    fact = fact_from_wire(value)
+    if fact is None or not isinstance(value, Mapping):
+        return None
+    entity, kind = value.get("entity_slug"), value.get("kind")
+    return CategorizedFact(
+        fact=fact,
+        category=category_for(entity if isinstance(entity, str) else None, kind if isinstance(kind, str) else None),
+    )
+
+
+def _categorized_keyword_search(facts: Sequence[CategorizedFact], query: str, limit: int) -> list[CategorizedFact]:
+    by_id = {item.fact.id: item for item in facts}
+    return [by_id[fact.id] for fact in keyword_search([item.fact for item in facts], query, limit)]
 
 
 def default_gbrain_home(instance_path: str | Path | None) -> Path:
@@ -312,17 +335,20 @@ class GBrainMemoryBackend:
             raise GBrainCallError(f"gbrain {op} error: {_error_detail(payload)[:500]}")
         return payload
 
-    def _recall(self, params: Mapping[str, Any]) -> list[MemoryFact]:
+    def _recall_categorized(self, params: Mapping[str, Any]) -> list[CategorizedFact]:
         payload = self.call("recall", params)
         raw_facts = payload.get("facts")
         if not isinstance(raw_facts, list):
             return []
-        facts: list[MemoryFact] = []
+        facts: list[CategorizedFact] = []
         for item in raw_facts:
-            fact = fact_from_wire(item)
+            fact = categorized_from_wire(item)
             if fact is not None:
                 facts.append(fact)
         return facts
+
+    def _recall(self, params: Mapping[str, Any]) -> list[MemoryFact]:
+        return [item.fact for item in self._recall_categorized(params)]
 
     # -- MemoryBackend -----------------------------------------------------
 
@@ -339,23 +365,9 @@ class GBrainMemoryBackend:
             return []
 
     def add_fact(self, text: str) -> MemoryFact | None:
-        """Remember one fact; None when empty, refused or on failure."""
-        normalized = normalize_memory_text(text)
-        if not normalized:
-            return None
-        try:
-            payload = self.call(
-                "remember",
-                {"fact": normalized, "provenance": GBRAIN_PROVENANCE, "kind": "fact"},
-            )
-        except GBrainCallError as exc:
-            logger.warning("GBrain remember failed: %s", exc)
-            return None
-        fact_id = payload.get("id")
-        if fact_id is None:
-            logger.warning("GBrain remember returned no id: %s", payload)
-            return None
-        return MemoryFact(id=str(fact_id), text=normalized, created_at=int(time.time() * 1000))
+        """Remember one user fact (the upstream remember tool); None when empty, refused or on failure."""
+        stored = self.add_categorized(text, DEFAULT_CATEGORY_KEY)
+        return stored.fact if stored is not None else None
 
     def forget_fact(self, query: str | None) -> ForgetMemoryResult:
         """Withdraw the first fact containing ``query`` (same matching as the JSON store)."""
@@ -396,8 +408,73 @@ class GBrainMemoryBackend:
         return keyword_search(self.list_facts(), question, limit)
 
     def format_for_prompt(self) -> str:
-        """Render the newest facts with the upstream prompt header."""
-        return format_facts_for_prompt(self.list_facts())
+        """Render the facts as category sections (persona, promises, user)."""
+        return format_categorized_prompt(self.list_categorized())
+
+    # -- CategorizedMemory -------------------------------------------------
+
+    def list_categorized_strict(self) -> list[CategorizedFact]:
+        """Like :meth:`list_categorized` but raise :class:`GBrainCallError` on failure."""
+        return self._recall_categorized({"limit": CATEGORIZED_LIST_LIMIT})
+
+    def list_categorized(self) -> list[CategorizedFact]:
+        """Return active facts of every category, newest first (empty on failure)."""
+        try:
+            return self.list_categorized_strict()
+        except GBrainCallError as exc:
+            logger.warning("GBrain list failed: %s", exc)
+            return []
+
+    def add_categorized(self, text: str, category: str, *, provenance: str | None = None) -> CategorizedFact | None:
+        """Remember one fact under ``category`` (GBrain entity + kind); None when empty, refused or on failure."""
+        target = get_category(category)
+        normalized = normalize_memory_text(text)
+        if not normalized:
+            return None
+        params = {
+            "fact": normalized,
+            "provenance": provenance or GBRAIN_PROVENANCE,
+            "kind": target.kind,
+            "entity": target.entity,
+        }
+        try:
+            payload = self.call("remember", params)
+        except GBrainCallError as exc:
+            logger.warning("GBrain remember failed: %s", exc)
+            return None
+        fact_id = payload.get("id")
+        if fact_id is None:
+            logger.warning("GBrain remember returned no id: %s", payload)
+            return None
+        fact = MemoryFact(id=str(fact_id), text=normalized, created_at=int(time.time() * 1000))
+        return CategorizedFact(fact=fact, category=target, duplicate=payload.get("status") == "duplicate")
+
+    def forget_by_id(self, fact_id: str) -> MemoryFact | None:
+        """Withdraw the active fact with this id; None if there is none or the call fails."""
+        wanted = str(fact_id).strip()
+        match = next((item.fact for item in self.list_categorized() if item.fact.id == wanted), None)
+        if match is None:
+            return None
+        try:
+            self.call("forget", {"id": match.id, "reason": GBRAIN_FORGET_REASON})
+        except GBrainCallError as exc:
+            logger.warning("GBrain forget failed for %s: %s", match.id, exc)
+            return None
+        return match
+
+    def search_categorized(self, query: str, limit: int) -> list[CategorizedFact]:
+        """Relevance-ranked recall with categories, with the same local fallback as :meth:`search`."""
+        question = normalize_memory_text(query)
+        if not question or limit <= 0:
+            return []
+        try:
+            ranked = self._recall_categorized({"question": question, "limit": limit})
+        except GBrainCallError as exc:
+            logger.warning("GBrain search failed: %s", exc)
+            return []
+        if ranked:
+            return ranked
+        return _categorized_keyword_search(self.list_categorized(), question, limit)
 
 
 def ensure_brain_initialized(

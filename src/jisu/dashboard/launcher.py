@@ -21,6 +21,8 @@ from collections.abc import Mapping, Sequence
 
 import httpx
 
+from jisu.tools import TOOLS_DIR
+from jisu.persona.seed import SeedFormatError, apply_seed
 from jisu.dashboard.constants import (
     APP_UI_PORT,
     DAEMON_PORT,
@@ -30,9 +32,11 @@ from jisu.dashboard.constants import (
     MEMORY_BACKEND_ENV,
     DAEMON_POLL_INTERVAL_S,
     DEFAULT_MEMORY_BACKEND,
+    EXTERNAL_TOOLS_DIR_ENV,
     PROCESS_KILL_TIMEOUT_S,
     PROCESS_STOP_TIMEOUT_S,
     DAEMON_HEALTH_TIMEOUT_S,
+    AUTOLOAD_EXTERNAL_TOOLS_ENV,
 )
 from jisu.dashboard.log_buffer import LogBuffer
 from jisu.dashboard.memory.gbrain_backend import GBrainMemoryBackend, ensure_brain_initialized
@@ -124,6 +128,9 @@ def build_app_env(base_env: Mapping[str, str], settings: LaunchSettings) -> dict
             "PYTHONUNBUFFERED": "1",
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
+            # jisu-owned LLM tools (update_persona); upstream tools/ stays untouched.
+            EXTERNAL_TOOLS_DIR_ENV: str(TOOLS_DIR),
+            AUTOLOAD_EXTERNAL_TOOLS_ENV: "1",
         }
     )
     if settings.conversation_backend:
@@ -281,6 +288,18 @@ class SimulationLauncher:
         message = ensure_brain_initialized(brain=brain)
         if message:
             self._log(message)
+        if brain.is_initialized():
+            self._seed_persona(brain)
+
+    def _seed_persona(self, brain: GBrainMemoryBackend) -> None:
+        """Put the profile's initial persona into a freshly created brain."""
+        try:
+            result = apply_seed(brain, self.settings.profile)
+        except SeedFormatError as exc:
+            self._log(f"WARNING: persona seed not applied: {exc}")
+            return
+        if result.saved or result.existing or result.skipped:
+            self._log(f"INFO: persona seed {result.path.name}: {result.summary()}")
 
     def ensure_daemon(self) -> None:
         """Reuse a running daemon or start one and wait until it is healthy."""

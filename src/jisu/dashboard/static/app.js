@@ -707,53 +707,152 @@ function updateBackendDetail() {
   $("btn-gbrain-init").classList.toggle("hidden", !(name === "gbrain" && info && !info.available));
 }
 
+// Category metadata comes from /api/memory/categories (jisu/persona/categories.py).
+const mem = { categories: [], groups: [], defaultCategory: "user_fact", filter: "", categorized: false, view: null };
+const REACHY_GROUPS = new Set(["persona", "promise"]);
+
+async function loadCategories() {
+  try {
+    const data = await api("/api/memory/categories");
+    mem.categories = data.categories;
+    mem.groups = data.groups;
+    mem.defaultCategory = data.default;
+    $("mem-add-category").replaceChildren(...data.categories.map((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.key;
+      opt.textContent = `${c.icon} ${c.label}`;
+      return opt;
+    }));
+    $("mem-add-category").value = data.default;
+  } catch (err) {
+    toast(`기억 분류 목록 실패: ${err.message}`, true);
+  }
+}
+
+function categoryInfo(key) {
+  return mem.categories.find((c) => c.key === key);
+}
+
+function factMatchesFilter(fact) {
+  return !mem.filter || fact.category === mem.filter || fact.group === mem.filter;
+}
+
+function renderChips(facts) {
+  const chips = $("mem-chips");
+  chips.classList.toggle("hidden", !mem.categorized);
+  $("mem-add-category").classList.toggle("hidden", !mem.categorized);
+  $("btn-mem-seed").classList.toggle("hidden", !mem.categorized);
+  if (!mem.categorized) return;
+  const counts = {};
+  for (const fact of facts) counts[fact.group] = (counts[fact.group] || 0) + 1;
+  const items = [{ key: "", label: "전체", count: facts.length }, ...mem.groups.map((g) => ({ ...g, count: counts[g.key] || 0 }))];
+  chips.replaceChildren(...items.map((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(mem.filter === item.key));
+    button.textContent = item.label;
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = String(item.count);
+    button.appendChild(count);
+    button.addEventListener("click", () => {
+      mem.filter = item.key;
+      if (mem.view) renderFacts(mem.view.facts, mem.view.label);
+    });
+    return button;
+  }));
+}
+
+function factItem(fact) {
+  const li = document.createElement("li");
+  const text = document.createElement("div");
+  text.className = "fact-text";
+  text.appendChild(document.createTextNode(fact.text));
+  const time = document.createElement("span");
+  time.className = "fact-time";
+  time.textContent = `${timeLabel(fact.createdAt)} · ${fact.id}`;
+  text.appendChild(time);
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "ghost";
+  del.textContent = "삭제";
+  del.addEventListener("click", () => forgetFact(fact));
+  li.append(text, del);
+  return li;
+}
+
+function groupHeader(key) {
+  const info = categoryInfo(key);
+  const li = document.createElement("li");
+  li.className = `fact-group ${info && REACHY_GROUPS.has(info.group) ? "reachy" : "user"}`;
+  li.textContent = info ? `${info.icon} ${info.label}` : key;
+  return li;
+}
+
+// Categorized facts are shown under one header per category, in table order.
 function renderFacts(facts, label) {
-  $("mem-view-label").textContent = label;
+  mem.view = { facts, label };
+  renderChips(facts);
+  const shown = mem.categorized ? facts.filter(factMatchesFilter) : facts;
+  $("mem-view-label").textContent = mem.categorized && mem.filter ? `${label} · ${shown.length}개 표시` : label;
   const list = $("facts");
-  if (!facts.length) {
+  if (!shown.length) {
     const li = document.createElement("li");
     li.className = "none";
     li.textContent = "기억이 없습니다";
     list.replaceChildren(li);
     return;
   }
-  list.replaceChildren(...facts.map((fact) => {
-    const li = document.createElement("li");
-    const text = document.createElement("div");
-    text.className = "fact-text";
-    text.textContent = fact.text;
-    const time = document.createElement("span");
-    time.className = "fact-time";
-    time.textContent = `${timeLabel(fact.createdAt)} · ${fact.id}`;
-    text.appendChild(time);
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "ghost";
-    del.textContent = "삭제";
-    del.addEventListener("click", () => forgetFact(fact.text));
-    li.append(text, del);
-    return li;
-  }));
+  if (!mem.categorized) {
+    list.replaceChildren(...shown.map(factItem));
+    return;
+  }
+  const order = mem.categories.map((c) => c.key);
+  const byCategory = new Map();
+  for (const fact of shown) {
+    if (!byCategory.has(fact.category)) byCategory.set(fact.category, []);
+    byCategory.get(fact.category).push(fact);
+  }
+  const keys = [...byCategory.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  list.replaceChildren(...keys.flatMap((key) => [groupHeader(key), ...byCategory.get(key).map(factItem)]));
 }
 
 async function loadFacts() {
   const backend = selectedBackend();
   try {
     const data = await api(`/api/memory?backend=${encodeURIComponent(backend)}`);
+    mem.categorized = Boolean(data.categorized);
+    if (!mem.categorized) mem.filter = "";
     renderFacts(data.facts, `저장된 기억 (${data.backend}, ${data.facts.length}개)`);
   } catch (err) {
+    mem.categorized = false;
     renderFacts([], `저장된 기억 (${backend}) — ${err.message}`);
   }
+  if (!$("mem-prompt").classList.contains("hidden")) await loadPromptPreview();
 }
 
-async function forgetFact(text) {
+async function forgetFact(fact) {
+  // Categorized stores delete by id, so the same sentence in another category stays.
+  const body = fact.category
+    ? { backend: selectedBackend(), id: fact.id }
+    : { backend: selectedBackend(), query: fact.text };
   try {
-    await api("/api/memory/forget", { method: "POST", body: { backend: selectedBackend(), query: text } });
+    await api("/api/memory/forget", { method: "POST", body });
     toast("삭제했습니다");
   } catch (err) {
     toast(`삭제 실패: ${err.message}`, true);
   }
   await loadFacts();
+}
+
+async function loadPromptPreview() {
+  const pre = $("mem-prompt");
+  try {
+    const data = await api(`/api/memory/prompt-preview?backend=${encodeURIComponent(selectedBackend())}`);
+    pre.textContent = data.prompt || "(기억이 없어 프로필 지시문만 들어갑니다)";
+  } catch (err) {
+    pre.textContent = `미리보기 실패: ${err.message}`;
+  }
 }
 
 function bindMemory() {
@@ -784,7 +883,8 @@ function bindMemory() {
     const text = input.value.trim();
     if (!text) return;
     try {
-      await api("/api/memory", { method: "POST", body: { backend: selectedBackend(), text } });
+      const category = mem.categorized ? $("mem-add-category").value : mem.defaultCategory;
+      await api("/api/memory", { method: "POST", body: { backend: selectedBackend(), text, category } });
       input.value = "";
       toast("기억을 추가했습니다");
     } catch (err) {
@@ -798,10 +898,28 @@ function bindMemory() {
     if (!query) { await loadFacts(); return; }
     try {
       const data = await api("/api/memory/search", { method: "POST", body: { backend: selectedBackend(), query } });
+      mem.categorized = Boolean(data.categorized);
       renderFacts(data.facts, `검색 결과: "${query}" (${data.facts.length}개)`);
     } catch (err) {
       toast(`검색 실패: ${err.message}`, true);
     }
+  });
+  $("btn-mem-seed").addEventListener("click", async () => {
+    try {
+      const data = await api("/api/memory/persona/seed", { method: "POST", body: { backend: selectedBackend() } });
+      toast(data.found
+        ? `페르소나 시드 ${data.file}: ${data.saved}개 저장, ${data.existing}개 이미 있음, ${data.skipped}개 건너뜀`
+        : `'${data.profile}' 프로필의 시드 파일(${data.file})이 없습니다`, !data.found);
+    } catch (err) {
+      toast(`시드 실패: ${err.message}`, true);
+    }
+    await loadFacts();
+  });
+  $("btn-mem-prompt").addEventListener("click", async () => {
+    const pre = $("mem-prompt");
+    const open = pre.classList.toggle("hidden") === false;
+    $("btn-mem-prompt").setAttribute("aria-expanded", String(open));
+    if (open) await loadPromptPreview();
   });
   $("btn-mem-clear").addEventListener("click", async () => {
     if (!confirmInline(`'${selectedBackend()}'의 기억을 모두 삭제합니다.`)) return;
@@ -858,6 +976,7 @@ async function boot() {
   $("btn-restart").addEventListener("click", () => lifecycle("restart", {}));
   $("btn-stop").addEventListener("click", () => lifecycle("stop"));
   bindMemory();
+  await loadCategories();
   bindCamera();
 
   const config = await api("/api/config");
