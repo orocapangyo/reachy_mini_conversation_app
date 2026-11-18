@@ -7,6 +7,8 @@ DAEMON_PORT = 8000
 APP_UI_PORT = 7860
 APP_RPC_PATH = "/rpc"
 DAEMON_HEALTH_PATH = "/api/state/full"
+APP_CAMERA_STREAM_PATH = "/api/camera/stream"
+APP_PROXY_TIMEOUT_S = 5.0
 
 # --- process lifecycle -------------------------------------------------------
 DEFAULT_PROFILE = "desk_companion_ko"

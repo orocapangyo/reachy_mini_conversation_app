@@ -117,7 +117,8 @@ input[type="text"], input[type="search"], select {
 }
 .chat { grid-area: chat; }
 .logs { grid-area: logs; }
-.memory { grid-area: memory; }
+.sidebar { grid-area: memory; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.sidebar .memory { flex: 1; }
 
 .panel {
   background: var(--panel);
@@ -192,6 +193,21 @@ input[type="text"], input[type="search"], select {
 .log-line.DEBUG { color: var(--log-debug); }
 .log-line.WARNING { color: var(--log-warning); }
 .log-line.ERROR, .log-line.CRITICAL { color: var(--log-error); }
+
+/* --- camera ---------------------------------------------------------- */
+.camera { flex: none; }
+.camera .panel-head select { max-width: 170px; }
+.camera-frame {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--log-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.camera-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.camera-frame img[hidden] { display: none; }
+.camera-frame .hint { color: var(--log-debug); text-align: center; padding: 0 16px; }
 
 /* --- memory ---------------------------------------------------------- */
 .memory { padding-bottom: 12px; }

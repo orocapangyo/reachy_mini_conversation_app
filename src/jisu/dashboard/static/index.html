@@ -66,6 +66,18 @@
       <div class="log-view" id="log-view"></div>
     </section>
 
+    <div class="sidebar">
+    <section class="panel camera" aria-label="카메라">
+      <div class="panel-head">
+        <h2>카메라</h2>
+        <select id="camera-source" aria-label="카메라 소스" disabled></select>
+      </div>
+      <div class="camera-frame">
+        <img id="camera-img" alt="리치미니 카메라 화면" hidden>
+        <p class="hint" id="camera-placeholder">앱을 시작하면 카메라 화면이 표시됩니다.</p>
+      </div>
+    </section>
+
     <aside class="panel memory" aria-label="장기 기억">
       <div class="panel-head">
         <h2>장기 기억</h2>
@@ -91,6 +103,7 @@
       <ul class="facts" id="facts"></ul>
       <button id="btn-mem-clear" type="button" class="danger ghost">전체 삭제</button>
     </aside>
+    </div>
   </main>
 
   <div class="toast" id="toast" role="status" hidden></div>

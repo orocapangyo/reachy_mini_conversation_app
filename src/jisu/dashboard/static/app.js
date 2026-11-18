@@ -6,6 +6,8 @@ const RPC_RECONNECT_MS = 2000;
 const LOG_RECONNECT_MS = 2000;
 const LOG_MAX_DOM_LINES = 3000;
 const RPC_TIMEOUT_MS = 15000;
+const CAMERA_RETRY_MS = 2000;
+const CAMERA_DEVICE_KEY = "dashboard_camera_device";
 const LEVEL_RANK = { DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40, CRITICAL: 50 };
 
 const $ = (id) => document.getElementById(id);
@@ -256,6 +258,89 @@ function connectLogs() {
   ws.onclose = () => setTimeout(connectLogs, LOG_RECONNECT_MS);
 }
 
+// --- camera (MJPEG straight from the app; device list/select via our proxy) ---
+const camera = { streamUrl: null, running: false, retryTimer: null };
+
+function storageGet(key) {
+  try { return localStorage.getItem(key); } catch (_err) { return null; }
+}
+
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); } catch (_err) { /* storage unavailable */ }
+}
+
+function showCameraStream() {
+  const img = $("camera-img");
+  clearTimeout(camera.retryTimer);
+  img.src = `${camera.streamUrl}?t=${Date.now()}`;
+  img.hidden = false;
+  $("camera-placeholder").hidden = true;
+}
+
+function hideCameraStream(message) {
+  const img = $("camera-img");
+  clearTimeout(camera.retryTimer);
+  img.removeAttribute("src");
+  img.hidden = true;
+  $("camera-placeholder").textContent = message;
+  $("camera-placeholder").hidden = false;
+}
+
+async function loadCameraDevices() {
+  const select = $("camera-source");
+  try {
+    const data = await api("/api/camera/devices");
+    select.replaceChildren(...data.devices.map((d) => {
+      const option = document.createElement("option");
+      option.value = d.id;
+      option.textContent = d.name;
+      return option;
+    }));
+    select.value = data.active;
+    select.disabled = false;
+    const saved = storageGet(CAMERA_DEVICE_KEY);
+    if (saved && saved !== data.active && data.devices.some((d) => d.id === saved)) {
+      await selectCamera(saved);
+    }
+  } catch (_err) {
+    select.disabled = true;
+    // The app's HTTP server may still be booting: try again on the next status change.
+    camera.running = false;
+  }
+}
+
+async function selectCamera(device) {
+  try {
+    const data = await api("/api/camera/select", { method: "POST", body: { device } });
+    $("camera-source").value = data.active;
+    storageSet(CAMERA_DEVICE_KEY, device);
+    showCameraStream();
+  } catch (err) {
+    toast(`카메라 전환 실패: ${err.message}`, true);
+  }
+}
+
+function updateCamera(appRunning) {
+  if (appRunning === camera.running) return;
+  camera.running = appRunning;
+  if (appRunning) {
+    showCameraStream();
+    void loadCameraDevices();
+  } else {
+    $("camera-source").disabled = true;
+    hideCameraStream("앱을 시작하면 카메라 화면이 표시됩니다.");
+  }
+}
+
+function bindCamera() {
+  $("camera-source").addEventListener("change", (event) => selectCamera(event.target.value));
+  $("camera-img").addEventListener("error", () => {
+    if (!camera.running) return;
+    hideCameraStream("카메라 연결 중…");
+    camera.retryTimer = setTimeout(() => { if (camera.running) showCameraStream(); }, CAMERA_RETRY_MS);
+  });
+}
+
 // --- app status / lifecycle -------------------------------------------------
 let currentBackend = null;
 let defaultBackend = "gbrain";
@@ -271,6 +356,7 @@ async function refreshStatus() {
     else setPill("daemon-pill", "warn", "데몬: 정지");
     $("btn-start").disabled = s.app.running;
     $("btn-stop").disabled = !s.app.running;
+    updateCamera(Boolean(s.app.running));
     if (currentBackend !== s.memory_backend) {
       currentBackend = s.memory_backend;
       await loadBackends();
@@ -480,6 +566,7 @@ async function boot() {
   $("btn-restart").addEventListener("click", () => lifecycle("restart", {}));
   $("btn-stop").addEventListener("click", () => lifecycle("stop"));
   bindMemory();
+  bindCamera();
 
   const config = await api("/api/config");
   const appHost = location.hostname || "localhost";
@@ -487,6 +574,7 @@ async function boot() {
   if (config.default_memory_backend) defaultBackend = config.default_memory_backend;
   chat.url = `ws://${appHost}:${config.app_port}${config.rpc_path}`;
   $("app-ui-link").href = `http://${appHost}:${config.app_port}/#/`;
+  camera.streamUrl = `http://${appHost}:${config.app_port}${config.camera_stream_path}`;
 
   connectLogs();
   connectRpc();

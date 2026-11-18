@@ -6,6 +6,7 @@ import logging
 from typing import Any, Protocol
 from pathlib import Path
 
+import httpx
 from fastapi import Body, Query, FastAPI, WebSocket, HTTPException, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from jisu.dashboard.constants import (
     APP_RPC_PATH,
     DEFAULT_MIC_MUTED,
+    APP_PROXY_TIMEOUT_S,
+    APP_CAMERA_STREAM_PATH,
     DEFAULT_MEMORY_BACKEND,
     MEMORY_SEARCH_DEFAULT_LIMIT,
 )
@@ -58,9 +61,15 @@ def create_app(
     *,
     app_port: int,
     instance_path: str | Path | None = None,
+    app_http: httpx.Client | None = None,
 ) -> FastAPI:
-    """Build the dashboard FastAPI application."""
+    """Build the dashboard FastAPI application.
+
+    ``app_http`` talks to the conversation app's HTTP API (camera proxy); a mock
+    transport is injected in tests.
+    """
     app = FastAPI(title="Reachy Mini Simulator Dashboard")
+    http = app_http or httpx.Client(base_url=f"http://127.0.0.1:{app_port}", timeout=APP_PROXY_TIMEOUT_S)
 
     def current_backend_name() -> str:
         return str(controller.status().get("memory_backend") or DEFAULT_MEMORY_BACKEND)
@@ -85,6 +94,7 @@ def create_app(
         return {
             "app_port": app_port,
             "rpc_path": APP_RPC_PATH,
+            "camera_stream_path": APP_CAMERA_STREAM_PATH,
             "default_mic_muted": DEFAULT_MIC_MUTED,
             "default_memory_backend": DEFAULT_MEMORY_BACKEND,
         }
@@ -191,6 +201,32 @@ def create_app(
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         logs.append("dashboard", f"INFO: GBrain initialized at {brain.home}")
         return {"home": str(brain.home), "output": output[-4000:]}
+
+    # -- camera (proxied to the conversation app, which has no CORS) ---------
+
+    def _proxy_app(method: str, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        try:
+            response = http.request(method, path, params=params)
+            response.raise_for_status()
+            data = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail=f"conversation app not reachable: {exc}") from exc
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=502, detail="conversation app returned unexpected data")
+        return data
+
+    @app.get("/api/camera/devices")
+    def _camera_devices() -> dict[str, Any]:
+        return _proxy_app("GET", "/api/camera/devices")
+
+    @app.post("/api/camera/select")
+    def _camera_select(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        device = str(payload.get("device") or "").strip()
+        if not device:
+            raise HTTPException(status_code=422, detail="device is required")
+        result = _proxy_app("POST", "/api/camera/select", {"device": device})
+        logs.append("dashboard", f"INFO: camera source -> {result.get('active', device)}")
+        return result
 
     # -- logs ---------------------------------------------------------------
 

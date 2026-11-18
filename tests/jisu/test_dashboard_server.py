@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -69,6 +70,7 @@ def test_index_and_config(setup: tuple[TestClient, FakeController, LogBuffer]) -
     assert client.get("/api/config").json() == {
         "app_port": 7860,
         "rpc_path": "/rpc",
+        "camera_stream_path": "/api/camera/stream",
         "default_mic_muted": True,
         "default_memory_backend": "gbrain",
     }
@@ -141,3 +143,39 @@ def test_logs_websocket_sends_backlog_then_entries(setup: tuple[TestClient, Fake
         entry = ws.receive_json()
         assert entry["type"] == "entry"
         assert (entry["entry"]["source"], entry["entry"]["level"]) == ("daemon", "WARNING")
+
+
+def test_camera_proxy_forwards_to_app(tmp_path: Path) -> None:
+    """Device listing and selection are forwarded to the conversation app."""
+    seen: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.url.query.decode()))
+        if request.url.path == "/api/camera/devices":
+            return httpx.Response(200, json={"devices": [{"id": "0", "name": "USB 웹캠 0"}], "active": "auto"})
+        return httpx.Response(200, json={"ok": True, "active": "0"})
+
+    http = httpx.Client(base_url="http://app.test", transport=httpx.MockTransport(handler))
+    logs = LogBuffer()
+    client = TestClient(create_app(FakeController(), logs, app_port=7860, instance_path=tmp_path, app_http=http))
+
+    assert client.get("/api/camera/devices").json()["active"] == "auto"
+    assert client.post("/api/camera/select", json={"device": "0"}).json() == {"ok": True, "active": "0"}
+    assert client.post("/api/camera/select", json={}).status_code == 422
+    assert seen == [("GET", "/api/camera/devices", ""), ("POST", "/api/camera/select", "device=0")]
+    assert "camera source -> 0" in logs.snapshot()[-1].message
+
+
+def test_camera_proxy_reports_unreachable_app(tmp_path: Path) -> None:
+    """When the app is down, the proxy answers 502 instead of raising."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    http = httpx.Client(base_url="http://app.test", transport=httpx.MockTransport(handler))
+    client = TestClient(
+        create_app(FakeController(), LogBuffer(), app_port=7860, instance_path=tmp_path, app_http=http)
+    )
+    response = client.get("/api/camera/devices")
+    assert response.status_code == 502
+    assert "not reachable" in response.json()["detail"]
