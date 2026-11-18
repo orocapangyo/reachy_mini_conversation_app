@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from jisu.dashboard.constants import (
     APP_RPC_PATH,
+    DEFAULT_MIC_MUTED,
     DEFAULT_MEMORY_BACKEND,
     MEMORY_SEARCH_DEFAULT_LIMIT,
 )
@@ -84,6 +85,7 @@ def create_app(
         return {
             "app_port": app_port,
             "rpc_path": APP_RPC_PATH,
+            "default_mic_muted": DEFAULT_MIC_MUTED,
             "default_memory_backend": DEFAULT_MEMORY_BACKEND,
         }
 

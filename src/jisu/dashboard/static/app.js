@@ -55,6 +55,9 @@ const chat = {
   pending: new Map(),
   live: { user: null, assistant: null },
   url: null,
+  defaultMicMuted: true,
+  // started_at of the app process the default mute was applied to (once per process).
+  micDefaultAppliedFor: null,
 };
 
 const TURN_LABEL = { listening: "듣는 중", thinking: "생각 중", speaking: "말하는 중", ready: "대기" };
@@ -125,6 +128,19 @@ function rpcCall(method, params = {}) {
   });
 }
 
+// The app boots unmuted: mute it once per app process, then leave the user's choice alone.
+async function syncMic() {
+  let startedAt = null;
+  try {
+    const s = await api("/api/app/status");
+    startedAt = s.app && s.app.started_at;
+  } catch (_err) { /* status unknown: only read the mic state */ }
+  const applyDefault = chat.defaultMicMuted && startedAt && chat.micDefaultAppliedFor !== startedAt;
+  const mic = await rpcCall("conversation.mic", applyDefault ? { muted: true } : {});
+  if (applyDefault) chat.micDefaultAppliedFor = startedAt;
+  return mic && mic.muted;
+}
+
 function connectRpc() {
   if (!chat.url) return;
   let ws;
@@ -139,8 +155,7 @@ function connectRpc() {
   ws.onopen = async () => {
     setPill("rpc-pill", "ok", "대화 연결: 연결됨");
     try {
-      const mic = await rpcCall("conversation.mic", {});
-      $("mic-muted").checked = Boolean(mic && mic.muted);
+      $("mic-muted").checked = Boolean(await syncMic());
     } catch (_err) { /* older app: ignore */ }
   };
   ws.onmessage = (event) => {
@@ -468,6 +483,7 @@ async function boot() {
 
   const config = await api("/api/config");
   const appHost = location.hostname || "localhost";
+  chat.defaultMicMuted = config.default_mic_muted !== false;
   if (config.default_memory_backend) defaultBackend = config.default_memory_backend;
   chat.url = `ws://${appHost}:${config.app_port}${config.rpc_path}`;
   $("app-ui-link").href = `http://${appHost}:${config.app_port}/#/`;

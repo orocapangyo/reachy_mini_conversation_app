@@ -69,6 +69,7 @@ def test_index_and_config(setup: tuple[TestClient, FakeController, LogBuffer]) -
     assert client.get("/api/config").json() == {
         "app_port": 7860,
         "rpc_path": "/rpc",
+        "default_mic_muted": True,
         "default_memory_backend": "gbrain",
     }
 

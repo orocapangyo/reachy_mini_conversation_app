@@ -44,6 +44,7 @@ python -m jisu.dashboard  (FastAPI :7870)
 - **대화창**은 앱이 원래 제공하는 JSON-RPC(`/rpc`)를 쓴다.
   - 받는 알림: `conversation.transcript`(자막), `conversation.turn`(상태)
   - 보내는 요청: `conversation.say`(채팅 입력), `conversation.interrupt`(말 끊기), `conversation.mic`(음소거)
+  - 앱은 매번 마이크가 켜진 채 뜬다. 그래서 대시보드가 앱 프로세스마다 한 번 음소거를 건다(기본값 `DEFAULT_MIC_MUTED`). 그 뒤 사용자가 바꾼 상태는 RPC가 다시 연결되어도 유지된다.
   - `say`로 보낸 문장은 자막으로 되돌아오지 않는다. 그래서 내가 입력한 말풍선은 UI가 직접 그린다.
 - **장기 기억 hook**은 `prompts.format_memory_for_prompt`, `tools.remember.add_memory_fact`, `tools.forget.forget_memory_fact`의 모듈 속성만 바꾼다. `memory.py`는 그대로 둔다.
   - 기억은 세션이 시작될 때 시스템 프롬프트에 들어간다. 그래서 백엔드를 바꾸면 앱을 재시작해야 한다(UI의 "적용 (앱 재시작)").

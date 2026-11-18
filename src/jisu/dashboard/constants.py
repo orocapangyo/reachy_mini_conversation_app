@@ -16,6 +16,10 @@ DAEMON_HEALTH_TIMEOUT_S = 1.0
 PROCESS_STOP_TIMEOUT_S = 15.0
 PROCESS_KILL_TIMEOUT_S = 5.0
 
+# --- conversation -------------------------------------------------------------
+# The app always boots unmuted; the dashboard mutes it once per app process.
+DEFAULT_MIC_MUTED = True
+
 # --- logs --------------------------------------------------------------------
 LOG_BUFFER_MAX_LINES = 3000
 LOG_SUBSCRIBER_QUEUE_MAX = 1000
