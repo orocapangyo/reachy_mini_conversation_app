@@ -169,6 +169,64 @@ input[type="text"], input[type="search"], select {
 .msg.system .bubble { background: transparent; color: var(--muted); font-size: 12px; padding: 2px; }
 .msg.partial .bubble { opacity: 0.65; font-style: italic; }
 
+/* thinking panel: what Reachy did internally during a turn */
+.messages.hide-thinking .msg.thinking { display: none; }
+.msg.thinking {
+  align-self: flex-start;
+  width: min(640px, 92%);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 4px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.msg.thinking.idle { border-style: dotted; }
+.msg.thinking > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  cursor: pointer;
+  padding: 3px 0;
+  list-style-position: inside;
+}
+.think-title { color: var(--text); font-weight: 600; }
+.think-tools { color: var(--text); flex: 1; min-width: 0; word-break: break-word; }
+.msg.thinking:not([open]) .think-title { font-weight: 500; color: var(--muted); }
+.think-time { font-size: 11px; }
+.think-steps { list-style: none; margin: 4px 0 6px; padding: 0 0 0 4px; display: flex; flex-direction: column; gap: 3px; }
+.think-steps > li { display: flex; align-items: flex-start; gap: 8px; line-height: 1.45; }
+.think-offset { font-family: var(--mono); font-size: 11px; min-width: 52px; text-align: right; opacity: 0.8; }
+.think-label { color: var(--text); }
+.think-tool details { flex: 1; min-width: 0; }
+.think-tool summary { display: flex; align-items: baseline; gap: 6px; cursor: pointer; color: var(--text); }
+.think-tool .tool-label { color: var(--text); font-weight: 600; }
+.think-tool code {
+  font-family: var(--mono);
+  background: var(--bot-bubble);
+  padding: 0 5px;
+  border-radius: 4px;
+}
+.think-tool .tool-args { color: var(--muted); font-family: var(--mono); font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.think-tool .tool-time { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.think-tool[data-status="failed"] code { color: var(--danger); }
+.think-tool[data-status="cancelled"] code { color: var(--warn); }
+.tool-detail { margin: 4px 0 4px 18px; }
+.tool-detail-label { font-size: 11px; margin-top: 4px; }
+.tool-detail pre {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--log-bg);
+  color: var(--log-text);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .composer {
   display: flex;
   gap: 8px;

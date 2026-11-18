@@ -46,3 +46,11 @@ BUN_INSTALL_ENV = "BUN_INSTALL"
 GBRAIN_HOME_DIRNAME = "gbrain"
 GBRAIN_PROVENANCE = "reachy-mini conversation (remember tool)"
 GBRAIN_FORGET_REASON = "user asked the robot to forget"
+
+# --- thinking trace ----------------------------------------------------------
+# Tool-call trace lines the app process prints (via the trace hook) for the chat's thinking panel.
+TRACE_MARKER = "[jisu-trace] "
+# Long strings in tool args/results (e.g. base64 camera frames) are cut to this many chars.
+TRACE_MAX_FIELD_CHARS = 500
+# Container items kept per list/dict level before summarizing the rest.
+TRACE_MAX_ITEMS = 50

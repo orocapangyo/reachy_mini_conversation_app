@@ -3,6 +3,7 @@
 리치미니 테스트용 독립 대시보드다. 브라우저 탭 하나에서 아래 세 가지를 한다.
 
 - **대화창**: 스피커/마이크로 오간 대화를 실시간 자막으로 보고, 텍스트로 채팅한다.
+  답변 위에는 **생각 과정** 블록이 붙어 그 턴에 리치미니가 내부적으로 한 일(도구 호출·인자·결과·소요 시간)을 보여 준다.
 - **로그**: 대화 앱, 시뮬 데몬, 대시보드의 콘솔 로그를 실시간으로 보고 레벨·출처·검색어로 거른다.
 - **장기 기억**: 백엔드(JSON / GBrain / …)를 고르고, 기억을 조회·추가·검색·삭제한다.
 
@@ -38,7 +39,9 @@ python -m jisu.dashboard  (FastAPI :7870)
  └─ static/       브라우저가 ws://localhost:7860/rpc 에 직접 접속 (대화창)
 
 대화 앱 = python -m jisu.dashboard.app_entry --ui --profile ...
- └─ memory/hook.py 가 기억 호출 지점을 선택한 백엔드로 연결한 뒤 기존 main() 실행
+ ├─ memory/hook.py 가 기억 호출 지점을 선택한 백엔드로 연결
+ ├─ trace/hook.py  가 도구 실행을 감싸 [jisu-trace] JSON 로그를 남김
+ └─ 기존 main() 실행
 ```
 
 - **대화창**은 앱이 원래 제공하는 JSON-RPC(`/rpc`)를 쓴다.
@@ -49,6 +52,14 @@ python -m jisu.dashboard  (FastAPI :7870)
 - **장기 기억 hook**은 `prompts.format_memory_for_prompt`, `tools.remember.add_memory_fact`, `tools.forget.forget_memory_fact`의 모듈 속성만 바꾼다. `memory.py`는 그대로 둔다.
   - 기억은 세션이 시작될 때 시스템 프롬프트에 들어간다. 그래서 백엔드를 바꾸면 앱을 재시작해야 한다(UI의 "적용 (앱 재시작)").
   - 선택한 백엔드를 쓸 수 없으면(예: gbrain 미설치) 경고 로그를 남기고 JSON으로 돌아간다.
+- **생각 과정(thinking) 패널**은 두 출처를 합쳐 턴마다 접히는 블록으로 그린다.
+  - `/rpc`의 `conversation.activity` 사유 → 단계 타임라인 (텍스트 입력 전달 → 응답 생성 → 도구 호출 요청 → 결과 전달 → 말하기 시작 → 응답 완료, 턴 시작 기준 `+ms`)
+  - `trace/hook.py`가 `BackgroundToolManager._run_tool`을 감싸 남기는 `[jisu-trace] {...}` 로그 → `log_buffer.parse_trace`가 `entry.trace`로 파싱 → 도구별 줄(✅/❌/⏹, 인자 요약, 소요 시간). 줄을 펼치면 인자·결과 JSON이 보인다.
+  - 모든 백엔드(openai/hf/gemini)와 idle 도구가 같은 경로를 지나므로 전부 잡힌다. idle 도구는 `🤖 자율 행동` 블록으로 따로 표시된다.
+  - 긴 문자열(카메라 base64 등)은 `TRACE_MAX_FIELD_CHARS`(500자)로 잘린다. 추적 실패는 도구 실행에 영향을 주지 않는다.
+  - 블록은 처음에 접힌 채로 나오고, 언제든 클릭해 펼치거나 접을 수 있다. 접혀 있어도 요약 줄에 호출한 도구가 `🛠 고개 움직이기(move_head) ✅, …` 형태로 보인다(한국어 설명은 `app.js`의 `TOOL_LABEL`).
+  - 모델 내부 추론 텍스트는 앱이 받지 않으므로 표시하지 않는다. 헤더의 `생각 과정` 체크박스로 숨길 수 있다(브라우저에 저장).
+  - 로그 WS 재연결 시 backlog의 trace는 대화창에 다시 그리지 않는다.
 
 ## GBrain 백엔드 설정
 

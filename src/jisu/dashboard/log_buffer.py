@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import re
+import json
 import time
 import asyncio
 import threading
@@ -9,7 +10,7 @@ from typing import Any
 from collections import deque
 from dataclasses import asdict, dataclass
 
-from jisu.dashboard.constants import LOG_BUFFER_MAX_LINES, LOG_SUBSCRIBER_QUEUE_MAX
+from jisu.dashboard.constants import TRACE_MARKER, LOG_BUFFER_MAX_LINES, LOG_SUBSCRIBER_QUEUE_MAX
 
 
 # Matches the app's logging format (utils.setup_logger):
@@ -35,6 +36,8 @@ class LogEntry:
     logger: str
     message: str
     raw: str
+    # Parsed tool-call trace event (see jisu.dashboard.trace.hook), else None.
+    trace: dict[str, Any] | None = None
 
     def to_json(self) -> dict[str, Any]:
         """Return a JSON-serializable dict."""
@@ -53,6 +56,17 @@ def parse_log_line(line: str) -> tuple[str, str, str]:
     if _TRACEBACK_HINT_RE.match(line):
         return "ERROR", "", line
     return "INFO", "", line
+
+
+def parse_trace(message: str) -> dict[str, Any] | None:
+    """Return the trace event carried by a ``TRACE_MARKER`` log message, else None."""
+    if not message.startswith(TRACE_MARKER):
+        return None
+    try:
+        event = json.loads(message[len(TRACE_MARKER) :])
+    except ValueError:
+        return None
+    return event if isinstance(event, dict) and isinstance(event.get("event"), str) else None
 
 
 class LogBuffer:
@@ -79,6 +93,7 @@ class LogBuffer:
                 logger=logger_name,
                 message=message,
                 raw=raw,
+                trace=parse_trace(message),
             )
             self._entries.append(entry)
             subscribers = list(self._subscribers.items())

@@ -89,6 +89,14 @@ function onTranscript({ role, text, final }) {
   let el = chat.live[who];
   if (!el) {
     el = chatAppend(who, text, { partial: !final, meta: label });
+    // Keep the open thinking block between the user's line and Reachy's answer.
+    const turn = thinking.turn;
+    if (turn && who === "assistant") {
+      turn.answered = true;
+      $("messages").insertBefore(turn.el, el);
+    } else if (turn && who === "user" && !turn.answered) {
+      $("messages").insertBefore(el, turn.el);
+    }
   } else {
     el.querySelector(".bubble").textContent = text;
   }
@@ -109,9 +117,284 @@ function onNotification(method, params) {
   } else if (method === "conversation.turn") {
     const state = params && params.state;
     setPill("turn-pill", state === "speaking" || state === "thinking" ? "busy" : "ok", `상태: ${TURN_LABEL[state] || state}`);
+  } else if (method === "conversation.activity") {
+    onThinkingActivity(params && params.reason);
   } else if (method === "conversation.phase") {
     if (params && params.phase) chatAppend("system", `세션: ${params.phase}${params.reason ? ` (${params.reason})` : ""}`);
   }
+}
+
+// --- thinking panel (activity reasons from /rpc + tool traces from /ws/logs) ---
+// Per turn, a collapsible block above Reachy's answer lists what happened
+// internally: speech/turn milestones and every tool call with args/result/time.
+const THINKING_VISIBLE_KEY = "dashboard_thinking_visible";
+const THINK_ARGS_SUMMARY_MAX = 90;
+const ACTIVITY_LABEL = {
+  user_speech_started: "🎙️ 사용자 발화 감지",
+  user_speech_stopped: "🎙️ 발화 종료",
+  user_transcription_completed: "📝 음성 인식 완료",
+  say: "⌨️ 텍스트 입력 전달",
+  startup_greeting_prompt: "👋 시작 인사 요청",
+  response_created: "💭 응답 생성 시작",
+  tool_call_received: "🛠️ 모델이 도구 호출을 요청",
+  tool_result_ready: "📨 도구 결과를 모델에 전달",
+  assistant_audio_delta: "🔊 말하기 시작",
+  assistant_transcript_done: "✅ 응답 완료",
+};
+// Reasons that open a new block when none is open (others only add to an open one).
+const TURN_OPEN_REASONS = new Set([
+  "user_speech_stopped", "user_transcription_completed", "say", "startup_greeting_prompt",
+  "response_created", "tool_call_received", "tool_result_ready",
+]);
+// Reasons that may repeat within one turn (logged again unless consecutive).
+const REPEATABLE_REASONS = new Set(["tool_call_received", "tool_result_ready"]);
+const TOOL_STATUS_ICON = { running: "⏳", completed: "✅", failed: "❌", cancelled: "⏹️" };
+// What each built-in tool does, shown next to its name (unknown tools show the name only).
+const TOOL_LABEL = {
+  camera: "카메라로 보기",
+  dance: "춤추기",
+  detect_face: "얼굴 찾기",
+  detect_objects: "물체 찾기",
+  forget: "기억 지우기",
+  get_schedule: "일정 확인",
+  go_to_sleep: "잠자기",
+  head_tracking: "얼굴 따라보기",
+  idle_do_nothing: "가만히 있기",
+  move_head: "고개 움직이기",
+  play_emotion: "감정 표현",
+  pomodoro_timer: "뽀모도로 타이머",
+  remember: "기억하기",
+  stop_dance: "춤 멈추기",
+  stop_emotion: "감정 표현 멈추기",
+  sweep_look: "주변 둘러보기",
+  task_cancel: "작업 취소",
+  task_status: "작업 상태 확인",
+};
+
+function toolDisplayName(name) {
+  const label = TOOL_LABEL[name];
+  return label ? `${label}(${name})` : name;
+}
+
+const thinking = {
+  turn: null,          // open per-turn block
+  tools: new Map(),    // trace id -> { row, block }
+  traceSeen: false,    // true once the trace hook reports (else fall back to tool_started:<name>)
+};
+
+function secondsLabel(ms) {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function prettyJson(value) {
+  if (value === undefined) return "";
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value, null, 2); } catch (_err) { return String(value); }
+}
+
+function argsSummary(args) {
+  if (args === null || args === undefined) return "";
+  let text;
+  if (typeof args === "object" && !Array.isArray(args)) {
+    text = Object.entries(args).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
+  } else {
+    text = typeof args === "string" ? args : JSON.stringify(args);
+  }
+  return text.length > THINK_ARGS_SUMMARY_MAX ? `${text.slice(0, THINK_ARGS_SUMMARY_MAX)}…` : text;
+}
+
+function scrollChatIfNear(force = false) {
+  const box = $("messages");
+  if (force || box.scrollHeight - box.scrollTop - box.clientHeight < 120) box.scrollTop = box.scrollHeight;
+}
+
+function createThinkingBlock({ idle = false } = {}) {
+  $("chat-empty")?.remove();
+  const el = document.createElement("details");
+  el.className = `msg thinking${idle ? " idle" : ""}`;
+  el.open = false; // collapsed by default; <details> lets the user expand/collapse any time
+  const summary = document.createElement("summary");
+  const title = document.createElement("span");
+  title.className = "think-title";
+  const toolsEl = document.createElement("span");
+  toolsEl.className = "think-tools";
+  const time = document.createElement("span");
+  time.className = "think-time";
+  time.textContent = new Date().toLocaleTimeString();
+  summary.append(title, toolsEl, time);
+  const steps = document.createElement("ol");
+  steps.className = "think-steps";
+  el.append(summary, steps);
+  const box = $("messages");
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  box.appendChild(el);
+  if (nearBottom) box.scrollTop = box.scrollHeight;
+  const block = {
+    el, title, toolsEl, steps, idle,
+    startedAt: Date.now(), running: 0, toolList: [], // toolList: [{ name, status }]
+    seen: new Set(), lastReason: null, answered: false, done: false,
+  };
+  updateThinkingTitle(block);
+  return block;
+}
+
+function updateThinkingTitle(block) {
+  if (block.idle) {
+    block.title.textContent = "🤖 자율 행동";
+  } else if (block.done) {
+    block.title.textContent = `💭 생각 과정 · ${secondsLabel(block.finishedAt - block.startedAt)}${block.note}`;
+  } else {
+    block.title.textContent = "💭 생각 중…";
+  }
+  // Tool calls stay visible in the collapsed summary: "🛠 고개 움직이기(move_head) ✅, …".
+  block.toolsEl.textContent = block.toolList.length
+    ? `🛠 ${block.toolList.map((t) => `${toolDisplayName(t.name)} ${TOOL_STATUS_ICON[t.status]}`).join(", ")}`
+    : (block.done && !block.idle ? "도구 호출 없음" : "");
+}
+
+function addThinkingStep(block, text, className = "") {
+  const li = document.createElement("li");
+  if (className) li.className = className;
+  const offset = document.createElement("span");
+  offset.className = "think-offset";
+  offset.textContent = `+${secondsLabel(Date.now() - block.startedAt)}`;
+  const label = document.createElement("span");
+  label.className = "think-label";
+  label.textContent = text;
+  li.append(offset, label);
+  block.steps.appendChild(li);
+  scrollChatIfNear();
+  return li;
+}
+
+function finishThinking(block, note = "") {
+  if (!block || block.done) return;
+  block.done = true;
+  block.finishedAt = Date.now();
+  block.note = note;
+  updateThinkingTitle(block);
+  if (thinking.turn === block) thinking.turn = null;
+}
+
+function ensureTurnBlock() {
+  if (!thinking.turn) thinking.turn = createThinkingBlock();
+  return thinking.turn;
+}
+
+function onThinkingActivity(reason) {
+  if (!reason) return;
+  if (reason.startsWith("tool_started:")) {
+    // Gemini names the tool in the activity; only used when no trace hook reports.
+    // Activity can arrive before the trace line; onTrace removes the placeholder then.
+    if (!thinking.traceSeen) {
+      const name = reason.slice("tool_started:".length);
+      addThinkingStep(ensureTurnBlock(), `🛠️ ${toolDisplayName(name)} 실행`, "think-tool-lite").dataset.tool = name;
+    }
+    return;
+  }
+  const label = ACTIVITY_LABEL[reason];
+  if (!label) return;
+  if (!thinking.turn && !TURN_OPEN_REASONS.has(reason)) return;
+  const block = ensureTurnBlock();
+  if (REPEATABLE_REASONS.has(reason) ? block.lastReason === reason : block.seen.has(reason)) return;
+  block.seen.add(reason);
+  block.lastReason = reason;
+  addThinkingStep(block, label);
+  if (reason === "assistant_transcript_done") finishThinking(block);
+}
+
+function toolRow(block, event) {
+  const chip = { name: event.tool || "?", status: "running" };
+  block.toolList.push(chip);
+  for (const lite of block.steps.querySelectorAll(".think-tool-lite")) {
+    if (lite.dataset.tool === event.tool) { lite.remove(); break; }
+  }
+  const li = document.createElement("li");
+  li.className = "think-tool";
+  li.dataset.status = "running";
+  const offset = document.createElement("span");
+  offset.className = "think-offset";
+  offset.textContent = `+${secondsLabel(Date.now() - block.startedAt)}`;
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  const icon = document.createElement("span");
+  icon.className = "tool-status";
+  icon.textContent = TOOL_STATUS_ICON.running;
+  const name = document.createElement("code");
+  name.textContent = event.tool || "?";
+  const nameLabel = document.createElement("span");
+  nameLabel.className = "tool-label";
+  nameLabel.textContent = TOOL_LABEL[event.tool] || "";
+  const args = document.createElement("span");
+  args.className = "tool-args";
+  args.textContent = argsSummary(event.args);
+  const time = document.createElement("span");
+  time.className = "tool-time";
+  time.textContent = "실행 중…";
+  summary.append(icon, nameLabel, name, args, time);
+  const body = document.createElement("div");
+  body.className = "tool-detail";
+  const argsLabel = document.createElement("div");
+  argsLabel.className = "tool-detail-label";
+  argsLabel.textContent = "인자";
+  const argsPre = document.createElement("pre");
+  argsPre.textContent = prettyJson(event.args) || "{}";
+  const resultLabel = document.createElement("div");
+  resultLabel.className = "tool-detail-label";
+  resultLabel.textContent = "결과";
+  const resultPre = document.createElement("pre");
+  resultPre.textContent = "(실행 중)";
+  body.append(argsLabel, argsPre, resultLabel, resultPre);
+  details.append(summary, body);
+  li.append(offset, details);
+  block.steps.appendChild(li);
+  scrollChatIfNear();
+  return { li, icon, time, resultLabel, resultPre, chip };
+}
+
+function onTrace(event) {
+  if (!event || !event.id) return;
+  thinking.traceSeen = true;
+  if (event.event === "tool_start") {
+    const block = event.idle ? createThinkingBlock({ idle: true }) : ensureTurnBlock();
+    block.running += 1;
+    thinking.tools.set(event.id, { row: toolRow(block, event), block });
+    updateThinkingTitle(block);
+  } else if (event.event === "tool_end") {
+    let entry = thinking.tools.get(event.id);
+    if (!entry) {
+      // Start line was missed (e.g. dashboard opened mid-call): show the end alone.
+      const block = event.idle ? createThinkingBlock({ idle: true }) : ensureTurnBlock();
+      block.running += 1;
+      entry = { row: toolRow(block, event), block };
+    }
+    thinking.tools.delete(event.id);
+    const { row, block } = entry;
+    const status = event.status in TOOL_STATUS_ICON ? event.status : (event.error ? "failed" : "completed");
+    row.li.dataset.status = status;
+    row.chip.status = status;
+    row.icon.textContent = TOOL_STATUS_ICON[status];
+    row.time.textContent = secondsLabel(event.duration_ms || 0);
+    if (event.error !== undefined) {
+      row.resultLabel.textContent = "오류";
+      row.resultPre.textContent = prettyJson(event.error);
+    } else {
+      row.resultPre.textContent = prettyJson(event.result) || "(없음)";
+    }
+    block.running = Math.max(0, block.running - 1);
+    if (block.idle && block.running === 0) finishThinking(block);
+    else updateThinkingTitle(block);
+  }
+}
+
+function resetThinking() {
+  thinking.turn = null;
+  thinking.tools.clear();
+}
+
+function applyThinkingVisible(visible) {
+  $("thinking-visible").checked = visible;
+  $("messages").classList.toggle("hide-thinking", !visible);
 }
 
 function rpcCall(method, params = {}) {
@@ -181,6 +464,7 @@ function connectRpc() {
     }
     chat.pending.clear();
     chat.live = { user: null, assistant: null };
+    finishThinking(thinking.turn, " · 연결 끊김");
     setTimeout(connectRpc, RPC_RECONNECT_MS);
   };
 }
@@ -252,6 +536,8 @@ function connectLogs() {
       logState.entries = msg.entries.slice(-LOG_MAX_DOM_LINES);
       logRerender();
     } else if (msg.type === "entry") {
+      // Backlog traces are not replayed into the chat (no duplicates on reconnect).
+      if (msg.entry.trace) onTrace(msg.entry.trace);
       logAppend(msg.entry);
     }
   };
@@ -549,6 +835,12 @@ async function boot() {
   $("btn-chat-clear").addEventListener("click", () => {
     $("messages").replaceChildren();
     chat.live = { user: null, assistant: null };
+    resetThinking();
+  });
+  applyThinkingVisible(storageGet(THINKING_VISIBLE_KEY) !== "0");
+  $("thinking-visible").addEventListener("change", (event) => {
+    applyThinkingVisible(event.target.checked);
+    storageSet(THINKING_VISIBLE_KEY, event.target.checked ? "1" : "0");
   });
   $("btn-interrupt").addEventListener("click", () => rpcCall("conversation.interrupt").catch((err) => toast(err.message, true)));
   $("mic-muted").addEventListener("change", (event) => {

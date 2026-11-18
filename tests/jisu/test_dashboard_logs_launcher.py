@@ -14,7 +14,8 @@ from jisu.dashboard.launcher import (
     build_app_command,
     build_daemon_command,
 )
-from jisu.dashboard.log_buffer import LogBuffer, parse_log_line
+from jisu.dashboard.constants import TRACE_MARKER
+from jisu.dashboard.log_buffer import LogBuffer, parse_trace, parse_log_line
 
 
 # --------------------------------------------------------------------------
@@ -59,6 +60,35 @@ def test_buffer_snapshot_and_capacity() -> None:
     logs.clear()
     assert logs.snapshot() == []
     assert logs.append("app", "next").seq == 6
+
+
+def test_trace_lines_are_parsed_into_entries() -> None:
+    """App lines carrying a trace marker get a parsed ``trace`` dict; others stay None."""
+    buf = LogBuffer()
+    payload = '{"event": "tool_start", "id": "call_1", "tool": "move_head", "args": {"direction": "왼쪽"}}'
+    line = f"2026-11-18 10:00:00,123 INFO jisu.dashboard.trace.hook:90 | {TRACE_MARKER}{payload}"
+    traced = buf.append("app", line)
+    plain = buf.append("app", "2026-11-18 10:00:00,124 INFO x:1 | hello")
+
+    assert traced.trace == {"event": "tool_start", "id": "call_1", "tool": "move_head", "args": {"direction": "왼쪽"}}
+    assert traced.to_json()["trace"] == traced.trace
+    assert plain.trace is None
+    assert plain.to_json()["trace"] is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "hello",
+        f"{TRACE_MARKER}{{not json",
+        f"{TRACE_MARKER}[1, 2]",
+        f'{TRACE_MARKER}{{"id": "no event"}}',
+        f' {TRACE_MARKER}{{"event": "tool_start"}}',
+    ],
+)
+def test_parse_trace_rejects_non_trace_messages(message: str) -> None:
+    """Only marker-prefixed JSON objects with an ``event`` field count as traces."""
+    assert parse_trace(message) is None
 
 
 @pytest.mark.asyncio
