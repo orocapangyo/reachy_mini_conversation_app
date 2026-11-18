@@ -399,3 +399,18 @@ def test_gbrain_add_categorized_rejects_unknown_category(tmp_path: Path) -> None
     backend = make_gbrain(tmp_path, FakeGBrain())
     with pytest.raises(KeyError):
         backend.add_categorized("x", "nope")
+
+
+def test_gbrain_search_native_has_no_fallback(tmp_path: Path) -> None:
+    """search_native returns GBrain's own ranking and its degraded reason, never local keywords."""
+    fake = FakeGBrain()
+    backend = make_gbrain(tmp_path, fake)
+    backend.add_categorized("나는 농담을 짧게 한다", "persona_trait")
+    assert [i.fact.text for i in backend.search_native("농담을", 5).facts] == ["나는 농담을 짧게 한다"]
+    fake.rank_questions = False
+    assert backend.search_native("농담", 5).facts == []
+    assert backend.search_native("  ", 5).facts == []
+    fake.fail_ops = {"recall"}
+    with pytest.raises(GBrainCallError):
+        backend.search_native("농담", 5)
+    assert backend.version() == "gbrain 0.0.0-fake"

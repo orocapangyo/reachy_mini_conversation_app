@@ -80,6 +80,15 @@ class CommandResult:
 CommandRunner = Callable[[Sequence[str], Mapping[str, str], float], CommandResult]
 
 
+@dataclass(frozen=True)
+class NativeSearch:
+    """GBrain's own ranking for one question, without the local fallback."""
+
+    facts: list[CategorizedFact]
+    # ``facts_degraded.reason`` from GBrain (e.g. ``no_query_terms``), "" when not degraded.
+    degraded_reason: str = ""
+
+
 class GBrainCallError(RuntimeError):
     """Raised when a GBrain CLI call fails or returns an error envelope."""
 
@@ -275,6 +284,14 @@ class GBrainMemoryBackend:
             return f"GBrain brain not initialized at {self.home}. Use the dashboard's 'GBrain 초기화' button."
         return None
 
+    def version(self) -> str:
+        """Return ``gbrain --version`` output ("" if it cannot run)."""
+        try:
+            result = self._runner([self._binary, "--version"], self._env(), self._timeout_s)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return result.stdout.strip() if result.returncode == 0 else ""
+
     def initialize(self) -> str:
         """Create the keyless PGLite brain (idempotent). Return the CLI output."""
         self.home.mkdir(parents=True, exist_ok=True)
@@ -335,8 +352,8 @@ class GBrainMemoryBackend:
             raise GBrainCallError(f"gbrain {op} error: {_error_detail(payload)[:500]}")
         return payload
 
-    def _recall_categorized(self, params: Mapping[str, Any]) -> list[CategorizedFact]:
-        payload = self.call("recall", params)
+    @staticmethod
+    def _facts_from_payload(payload: Mapping[str, Any]) -> list[CategorizedFact]:
         raw_facts = payload.get("facts")
         if not isinstance(raw_facts, list):
             return []
@@ -346,6 +363,22 @@ class GBrainMemoryBackend:
             if fact is not None:
                 facts.append(fact)
         return facts
+
+    def _recall_categorized(self, params: Mapping[str, Any]) -> list[CategorizedFact]:
+        return self._facts_from_payload(self.call("recall", params))
+
+    def search_native(self, query: str, limit: int) -> NativeSearch:
+        """GBrain's own relevance ranking only (no local fallback); raises :class:`GBrainCallError`.
+
+        Used by the memory benchmark to measure what the fallback adds.
+        """
+        question = normalize_memory_text(query)
+        if not question or limit <= 0:
+            return NativeSearch(facts=[])
+        payload = self.call("recall", {"question": question, "limit": limit})
+        degraded = payload.get("facts_degraded")
+        reason = degraded.get("reason") if isinstance(degraded, Mapping) else None
+        return NativeSearch(facts=self._facts_from_payload(payload), degraded_reason=str(reason or ""))
 
     def _recall(self, params: Mapping[str, Any]) -> list[MemoryFact]:
         return [item.fact for item in self._recall_categorized(params)]

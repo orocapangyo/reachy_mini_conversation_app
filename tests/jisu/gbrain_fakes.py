@@ -27,6 +27,8 @@ class FakeGBrain:
         self.calls.append((argv, dict(env)))
         if argv[1] == "init":
             return CommandResult(0, '{"status":"ok"}', "")
+        if argv[1] == "--version":
+            return CommandResult(0, "gbrain 0.0.0-fake\n", "")
         assert argv[1] == "call"
         op, params = argv[2], json.loads(argv[3])
         if op in self.fail_ops:
