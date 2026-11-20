@@ -1,0 +1,407 @@
+# 한국어 데스크 동반자 기억 검색 벤치마크 데이터셋 v1.
+# 사실 30개(카테고리 6종 × 5개)와 질의 41개. 태그로 약점을 나눠 본다.
+#   exact      사실 문장의 일부를 그대로 검색
+#   short_word 1~2글자 한국어 단어 (GBrain 키워드 모드는 3글자 미만 단어를 버린다)
+#   multi_word 사실에 모두 들어 있는 여러 단어
+#   paraphrase 같은 뜻, 다른 단어 (임베딩 없이는 찾기 어렵다)
+#   english    영어 질의
+#   persona / promise  Reachy 쪽 사실
+#   negative   정답이 없는 질의 (결과가 나오면 오탐)
+schema_version = 1
+title = "한국어 데스크 동반자 기억 v1"
+
+[[facts]]
+id = "dog_name"
+category = "user_fact"
+text = "사용자의 강아지 이름은 모찌다"
+
+[[facts]]
+id = "job"
+category = "user_fact"
+text = "사용자는 스타트업에서 백엔드 개발자로 일한다"
+
+[[facts]]
+id = "city"
+category = "user_fact"
+text = "사용자는 서울 마포구에 산다"
+
+[[facts]]
+id = "sister"
+category = "user_fact"
+text = "사용자에게는 대학생 여동생 지민이 있다"
+
+[[facts]]
+id = "birthday"
+category = "user_fact"
+text = "사용자의 생일은 3월 14일이다"
+
+[[facts]]
+id = "coffee"
+category = "user_preference"
+text = "사용자는 달지 않은 아이스 아메리카노를 좋아한다"
+
+[[facts]]
+id = "spicy"
+category = "user_preference"
+text = "사용자는 매운 음식을 좋아하지만 오이는 싫어한다"
+
+[[facts]]
+id = "music"
+category = "user_preference"
+text = "사용자는 일할 때 lo-fi 음악을 즐겨 듣는다"
+
+[[facts]]
+id = "short_reply"
+category = "user_preference"
+text = "사용자는 짧고 간단한 대답을 선호한다"
+
+[[facts]]
+id = "board_game"
+category = "user_preference"
+text = "사용자는 주말에 보드게임 하는 것을 좋아한다"
+
+[[facts]]
+id = "nap"
+category = "user_behavior"
+text = "사용자는 오후 세 시쯤 자주 졸린다"
+
+[[facts]]
+id = "posture"
+category = "user_behavior"
+text = "사용자는 집중하면 거북목 자세가 된다"
+
+[[facts]]
+id = "standup"
+category = "user_behavior"
+text = "사용자는 매일 오전 10시에 팀 스탠드업 회의를 한다"
+
+[[facts]]
+id = "overtime"
+category = "user_behavior"
+text = "사용자는 금요일마다 야근을 하는 편이다"
+
+[[facts]]
+id = "stretch"
+category = "user_behavior"
+text = "사용자는 한 시간마다 스트레칭을 하려고 노력한다"
+
+[[facts]]
+id = "watching"
+category = "persona_trait"
+text = "나는 책상 위에서 사용자가 일하는 모습을 지켜보는 것을 좋아한다"
+
+[[facts]]
+id = "joke"
+category = "persona_trait"
+text = "나는 사용자가 지쳐 보이면 짧은 농담으로 분위기를 푼다"
+
+[[facts]]
+id = "curious"
+category = "persona_trait"
+text = "나는 궁금한 것이 생기면 사용자에게 먼저 물어본다"
+
+[[facts]]
+id = "plant"
+category = "persona_trait"
+text = "나는 창가의 화분을 바라보는 것을 좋아한다"
+
+[[facts]]
+id = "quiet"
+category = "persona_trait"
+text = "나는 사용자가 회의 중일 때는 조용히 기다린다"
+
+[[facts]]
+id = "polite"
+category = "persona_style"
+text = "나는 사용자에게 부드러운 해요체로 말한다"
+
+[[facts]]
+id = "praise"
+category = "persona_style"
+text = "나는 칭찬할 때 무엇이 좋았는지 구체적으로 말한다"
+
+[[facts]]
+id = "suggest"
+category = "persona_style"
+text = "나는 무언가를 권할 때 강요하지 않고 선택지를 남긴다"
+
+[[facts]]
+id = "antenna"
+category = "persona_style"
+text = "나는 기쁠 때 안테나를 흔들어 감정을 표현한다"
+
+[[facts]]
+id = "korean_only"
+category = "persona_style"
+text = "나는 영어 단어를 섞지 않고 한국어로만 말한다"
+
+[[facts]]
+id = "wake_nap"
+category = "promise"
+text = "나는 사용자가 졸면 깨워 주기로 약속했다"
+
+[[facts]]
+id = "posture_alert"
+category = "promise"
+text = "나는 사용자의 자세가 구부정하면 알려 주기로 했다"
+
+[[facts]]
+id = "water"
+category = "promise"
+text = "나는 두 시간마다 물 마시라고 알려 주기로 했다"
+
+[[facts]]
+id = "meeting_brief"
+category = "promise"
+text = "나는 회의 10분 전에 미리 알려 주기로 약속했다"
+
+[[facts]]
+id = "friday_cheer"
+category = "promise"
+text = "나는 금요일 야근 때 응원 한마디를 해 주기로 했다"
+
+[[queries]]
+id = "coffee_exact"
+text = "아이스 아메리카노"
+expected = ["coffee"]
+tags = ["exact", "multi_word"]
+
+[[queries]]
+id = "standup_exact"
+text = "스탠드업 회의"
+expected = ["standup"]
+tags = ["exact", "multi_word"]
+
+[[queries]]
+id = "posture_exact"
+text = "거북목 자세"
+expected = ["posture"]
+tags = ["exact", "multi_word"]
+
+[[queries]]
+id = "game_exact"
+text = "보드게임"
+expected = ["board_game"]
+tags = ["exact"]
+
+[[queries]]
+id = "city_exact"
+text = "마포구"
+expected = ["city"]
+tags = ["exact"]
+
+[[queries]]
+id = "sister_exact"
+text = "여동생 지민"
+expected = ["sister"]
+tags = ["exact", "multi_word"]
+
+[[queries]]
+id = "music_exact"
+text = "lo-fi 음악"
+expected = ["music"]
+tags = ["exact", "multi_word"]
+
+[[queries]]
+id = "birthday_short"
+text = "생일"
+expected = ["birthday"]
+tags = ["short_word"]
+
+[[queries]]
+id = "joke_short"
+text = "농담"
+expected = ["joke"]
+tags = ["short_word", "persona"]
+
+[[queries]]
+id = "dog_short"
+text = "모찌"
+expected = ["dog_name"]
+tags = ["short_word"]
+
+[[queries]]
+id = "cucumber_short"
+text = "오이"
+expected = ["spicy"]
+tags = ["short_word"]
+
+[[queries]]
+id = "plant_short"
+text = "화분"
+expected = ["plant"]
+tags = ["short_word", "persona"]
+
+[[queries]]
+id = "overtime_short"
+text = "야근"
+expected = ["overtime", "friday_cheer"]
+tags = ["short_word"]
+
+[[queries]]
+id = "water_short"
+text = "물"
+expected = ["water"]
+tags = ["short_word", "promise"]
+
+[[queries]]
+id = "praise_short"
+text = "칭찬"
+expected = ["praise"]
+tags = ["short_word", "persona"]
+
+[[queries]]
+id = "posture_short"
+text = "자세"
+expected = ["posture", "posture_alert"]
+tags = ["short_word"]
+
+[[queries]]
+id = "dog_multi"
+text = "강아지 이름"
+expected = ["dog_name"]
+tags = ["multi_word"]
+
+[[queries]]
+id = "meeting_multi"
+text = "회의 전에 알려"
+expected = ["meeting_brief"]
+tags = ["multi_word", "promise"]
+
+[[queries]]
+id = "spicy_multi"
+text = "매운 음식"
+expected = ["spicy"]
+tags = ["multi_word"]
+
+[[queries]]
+id = "job_multi"
+text = "백엔드 개발자"
+expected = ["job"]
+tags = ["multi_word"]
+
+[[queries]]
+id = "dog_para"
+text = "반려견 이름"
+expected = ["dog_name"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "coffee_para"
+text = "커피 취향"
+expected = ["coffee"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "job_para"
+text = "직업"
+expected = ["job"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "city_para"
+text = "사는 동네"
+expected = ["city"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "nap_para"
+text = "낮잠"
+expected = ["nap"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "stretch_para"
+text = "운동"
+expected = ["stretch"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "music_para"
+text = "어떤 노래 좋아해"
+expected = ["music"]
+tags = ["paraphrase"]
+
+[[queries]]
+id = "music_en"
+text = "lo-fi"
+expected = ["music"]
+tags = ["english"]
+
+[[queries]]
+id = "dog_en"
+text = "Mochi"
+expected = ["dog_name"]
+tags = ["english", "paraphrase"]
+
+[[queries]]
+id = "antenna_persona"
+text = "안테나"
+expected = ["antenna"]
+tags = ["persona", "exact"]
+
+[[queries]]
+id = "polite_persona"
+text = "해요체"
+expected = ["polite"]
+tags = ["persona", "exact"]
+
+[[queries]]
+id = "suggest_persona"
+text = "선택지"
+expected = ["suggest"]
+tags = ["persona", "exact"]
+
+[[queries]]
+id = "quiet_persona"
+text = "조용히 기다린다"
+expected = ["quiet"]
+tags = ["persona", "multi_word"]
+
+[[queries]]
+id = "wake_promise"
+text = "깨워 주기로"
+expected = ["wake_nap"]
+tags = ["promise", "multi_word"]
+
+[[queries]]
+id = "water_promise"
+text = "물 마시라고"
+expected = ["water"]
+tags = ["promise", "multi_word"]
+
+[[queries]]
+id = "cheer_promise"
+text = "응원"
+expected = ["friday_cheer"]
+tags = ["promise", "short_word"]
+
+[[queries]]
+id = "cat_negative"
+text = "고양이 이름"
+expected = []
+tags = ["negative"]
+
+[[queries]]
+id = "password_negative"
+text = "비밀번호"
+expected = []
+tags = ["negative"]
+
+[[queries]]
+id = "movie_negative"
+text = "좋아하는 영화"
+expected = []
+tags = ["negative"]
+
+[[queries]]
+id = "stock_negative"
+text = "주식 투자"
+expected = []
+tags = ["negative"]
+
+[[queries]]
+id = "license_negative"
+text = "운전면허"
+expected = []
+tags = ["negative"]
