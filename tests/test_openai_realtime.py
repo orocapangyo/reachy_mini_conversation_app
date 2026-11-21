@@ -98,6 +98,22 @@ def test_resample_pcm_same_rate_is_passthrough() -> None:
     assert np.array_equal(result, source)
 
 
+def test_resample_pcm_tiny_frames_do_not_crash() -> None:
+    """Tiny frames (< 3 samples) must not trigger 'fp and xp are not of the same length'."""
+    from reachy_mini_conversation_app.openai_realtime import resample_pcm
+
+    for size in (1, 2, 3, 4):
+        source = np.ones(size, dtype=np.int16) * 100
+        # Downsampling 24k -> 16k
+        down = resample_pcm(source, 24000, 16000)
+        assert down.dtype == np.int16
+        assert down.size >= 1
+        # Upsampling 16k -> 24k
+        up = resample_pcm(source, 16000, 24000)
+        assert up.dtype == np.int16
+        assert up.size >= 1
+
+
 def test_default_openai_voice_validates_config(monkeypatch: Any) -> None:
     """OPENAI_VOICE is normalized against the catalog; unsupported values fall back to marin."""
     from reachy_mini_conversation_app import openai_realtime as oai_mod

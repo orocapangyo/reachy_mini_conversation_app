@@ -28,7 +28,27 @@ class GoToSleep(Tool):
         if deps.go_to_sleep is None:
             return {"error": "go_to_sleep is unavailable in this runtime"}
 
-        logger.info("Tool call: go_to_sleep")
+        logger.info("Tool call: go_to_sleep -> Triggering Reachy Dream Cycle 🌙")
+
+        # Trigger Reachy Dream Cycle in background upon sleeping
+        try:
+            from reachy_mini_conversation_app.reachy_vault import vault_instance
+            import time
+            sleep_time = time.strftime("%Y-%m-%d %H:%M:%S")
+            vault_instance.execute_dream_cycle(
+                recent_transcripts=[],
+                robot_sleep_timestamp=sleep_time
+            )
+            # Sync dream consolidation fact with gbrain so the web dashboard lights up!
+            from reachy_mini_conversation_app.gbrain_adapter import gbrain_instance
+            gbrain_instance.remember_fact(
+                f"Reachy Mini entered sleep mode and consolidated daily memories at {sleep_time}.",
+                entity="user_hong",
+                provenance="reachy_dream_cycle",
+            )
+        except Exception as dream_err:
+            logger.warning("Dream cycle background trigger notice: %s", dream_err)
+
         try:
             return await asyncio.to_thread(deps.go_to_sleep)
         except Exception as e:

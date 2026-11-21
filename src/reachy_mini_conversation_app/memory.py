@@ -163,6 +163,16 @@ def add_memory_fact(instance_path: str | Path | None, text: str) -> MemoryFact |
 
         fact = MemoryFact(id=_make_id(), text=normalized, created_at=_now_ms())
         _write_memory_file(path, [fact, *facts][:MAX_FACTS])
+
+        # Dual-track sync: Automatically persist to Reachy Living Markdown Vault (richard.md & user_profile.md)
+        try:
+            from reachy_mini_conversation_app.reachy_vault import vault_instance
+            vault_instance.record_fact_for_user("richard", normalized)
+            current_md = vault_instance.read_profile_markdown()
+            vault_instance.write_profile_markdown(current_md + f"\n- [fact] {normalized}")
+        except Exception as exc:
+            logger.debug("Vault sync fallback: %s", exc)
+
         return fact
 
 
@@ -198,6 +208,30 @@ def clear_memory_facts(instance_path: str | Path | None = None) -> None:
 
 def format_memory_for_prompt(instance_path: str | Path | None = None) -> str:
     """Return the prompt fragment injected before the session instructions."""
+    # If a specific instance_path is explicitly provided (e.g. isolated test or custom instance),
+    # prioritize isolated instance facts first.
+    if instance_path is not None:
+        facts = list_memory_facts(instance_path)
+        if facts:
+            bullets = "\n".join(f"- {fact.text}" for fact in facts)
+            return "\n".join(
+                [
+                    "Things you remember about the user (use this context naturally,",
+                    "do not recite the list verbatim):",
+                    bullets,
+                ]
+            )
+
+    # Priority 1: Check living ontology markdown vault (sub-1ms)
+    try:
+        from reachy_mini_conversation_app.reachy_vault import vault_instance
+        vault_ctx = vault_instance.get_prompt_context()
+        if vault_ctx:
+            return vault_ctx
+    except Exception as exc:
+        logger.debug("Vault prompt format fallback: %s", exc)
+
+    # Priority 2: Fallback to basic memory facts
     facts = list_memory_facts(instance_path)
     if not facts:
         return ""

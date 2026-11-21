@@ -138,8 +138,11 @@ def resample_pcm(
     """
     if audio.size == 0 or source_rate == target_rate:
         return audio
+    if audio.shape[0] == 1:
+        target_length = max(1, round(audio.shape[0] * target_rate / source_rate))
+        return np.full((target_length,), audio[0], dtype=np.int16)
     audio_float = audio.astype(np.float64)
-    if target_rate < source_rate:
+    if target_rate < source_rate and audio.shape[0] >= len(_ANTI_ALIAS_KERNEL):
         audio_float = np.convolve(audio_float, _ANTI_ALIAS_KERNEL, mode="same")
     target_length = max(1, round(audio.shape[0] * target_rate / source_rate))
     source_positions = np.arange(audio.shape[0], dtype=np.float64)
